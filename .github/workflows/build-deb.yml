@@ -1,0 +1,134 @@
+# Build, Test, and Draft Releae for static and dynamic versions of the
+# MTConnect Agent on Windows, Mac OS, and Linux. 
+#
+# The Windows x86 and x86_64 builds create ZIP packages and attach them to
+# a draft release when the commit is tagged.
+#
+# Secret required for Release:
+#   RELEASE_GITHUB_TOKEN - Release token created by admin in Settings / Developer Settings / Personal access tokens /
+#                            Find-grained tokens
+#                          The token must be renewed every 90 days.
+
+name: Build MTConnect C++ Agent for Ubuntu
+
+on:
+  # Enable automated build once verified
+  pull_request:
+    paths-ignore: ["**/*.md", "LICENSE.txt", ".gitignore"]
+    branches: [ "main", "main-dev" ]
+
+  push:
+    paths-ignore: ["**/*.md", "LICENSE.txt", ".gitignore"]
+    branches: [ "main", "main-dev" ]
+    tags:
+      - "v*.*.*"
+
+  # Allow manually run workflows
+  workflow_dispatch:
+
+jobs:
+  build_linux:
+    env:
+      PACKAGE_VERSION: ${{ github.ref_name }}
+    runs-on: ubuntu-20.04
+    name: "Ubuntu 20.04, Shared: ${{ matrix.shared }}"
+    strategy:
+      matrix:
+        shared: ["True"]
+            
+    steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        sudo apt install -y build-essential cmake gcc g++ python3 python3-pip autoconf automake rake ruby
+      
+    - name: Checkout Agent
+      uses: actions/checkout@v3
+
+    - name: Cache conan packages
+      id: cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.conan2
+        key: ${{ runner.os }}-build-${{ matrix.shared }}-${{ hashFiles('**/conanfile.py') }}
+                      
+    - name: Install Conan
+      uses: turtlebrowser/get-conan@v1.2
+      
+    - name: Setup Conan
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        conan profile detect -f
+      
+    - name: Cleanup Prior Build
+      if: steps.cache.outputs.cache-hit == 'true'
+      continue-on-error: true
+      run: |
+        conan remove mtconnect_agent -c
+
+    - name: Build C++ Agent
+      shell: bash
+      run: |
+        export CTEST_OUTPUT_ON_FAILURE=TRUE
+        conan create . --build=missing -pr conan/profiles/gcc  -o shared=${{ matrix.shared }} -o cpack=True -o cpack_name=dist -o cpack_destination=${{ github.workspace }} --test-folder=
+    - name: Cleanse package version
+      run: |
+        if [[ $PACKAGE_VERSION == v*.*.*.* ]]; then
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION:1}"" >> $GITHUB_ENV
+        elif [[ $PACKAGE_VERSION == [0-9].*.*.* ]]; then
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION:0}"" >> $GITHUB_ENV
+        else
+          echo "PACKAGE_VERSION=0.0.0.0" >> $GITHUB_ENV
+        fi
+    - name: Prepare Debian Package
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        mkdir -p pkgroot/home/edge/
+        ls -lah pkgroot
+        tar -xzf dist.tar.gz -C pkgroot/home/edge/
+        mv pkgroot/home/edge/dist pkgroot/home/edge/agent
+        mv pkgroot/home/edge/agent/share/mtconnect/* pkgroot/home/edge/agent/
+        rm -rf pkgroot/home/edge/agent/share
+        rm -rf pkgroot/home/edge/agent/docker
+        rm -rf pkgroot/home/edge/agent/demo
+    - name: Create Debian Package
+      id: create_debian_package
+      uses: jiro4989/build-deb-action@v3
+      with:
+        package: mtconnect-agent
+        package_root: ${{ github.workspace}}/pkgroot
+        version: ${{ env.PACKAGE_VERSION }}
+        arch: all
+        desc: "MTConnect Agent for Linux"
+        maintainer: Datanomix <support@datanomix.io>
+    - name: Deploy if release to packagecloud for focal
+      if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
+      uses: computology/packagecloud-github-action@v0.8
+      with:
+        package-name: ${{github.workspace}}/${{steps.create_debian_package.outputs.file_name}}
+        packagecloud-username: datanomix
+        packagecloud-reponame: dnx-edge
+        packagecloud-distro: ubuntu/focal
+        packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
+
+    - name: Deploy if release to packagecloud for jammy
+      if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
+      uses: computology/packagecloud-github-action@v0.8
+      with:
+        package-name: ${{github.workspace}}/${{steps.create_debian_package.outputs.file_name}}
+        packagecloud-username: datanomix
+        packagecloud-reponame: dnx-edge
+        packagecloud-distro: ubuntu/jammy
+        packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
+
+    - name: Deploy if release to packagecloud for noble
+      if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
+      uses: computology/packagecloud-github-action@v0.8
+      with:
+        package-name: ${{github.workspace}}/${{steps.create_debian_package.outputs.file_name}}
+        packagecloud-username: datanomix
+        packagecloud-reponame: dnx-edge
+        packagecloud-distro: ubuntu/noble
+        packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
+
