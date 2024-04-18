@@ -19,7 +19,7 @@ on:
 
   push:
     paths-ignore: ["**/*.md", "LICENSE.txt", ".gitignore"]
-    branches: [ "main", "main-dev", "jarsenault-debify" ]
+    branches: [ "main", "main-dev" ]
     tags:
       - "v*.*.*"
 
@@ -31,7 +31,7 @@ jobs:
     env:
       PACKAGE_VERSION: ${{ github.ref_name }}
     runs-on: ubuntu-20.04
-    name: "Ubuntu Latest, Shared: ${{ matrix.shared }}"
+    name: "Ubuntu 20.04, Shared: ${{ matrix.shared }}"
     strategy:
       matrix:
         shared: ["True"]
@@ -66,7 +66,7 @@ jobs:
       run: |
         conan remove mtconnect_agent -c
 
-    - name: Build and Test C++ Agent
+    - name: Build C++ Agent
       shell: bash
       run: |
         export CTEST_OUTPUT_ON_FAILURE=TRUE
@@ -102,7 +102,7 @@ jobs:
         arch: all
         desc: "MTConnect Agent for Linux"
         maintainer: Datanomix <support@datanomix.io>
-    - name: publish if release to packagecloud
+    - name: Deploy if release to packagecloud for focal
       if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
       uses: computology/packagecloud-github-action@v0.8
       with:
@@ -112,7 +112,7 @@ jobs:
         packagecloud-distro: ubuntu/focal
         packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
 
-    - name: Deploy packagecloud jammy deb
+    - name: Deploy if release to packagecloud for jammy
       if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
       uses: computology/packagecloud-github-action@v0.8
       with:
@@ -122,7 +122,7 @@ jobs:
         packagecloud-distro: ubuntu/jammy
         packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
 
-    - name: Deploy packagecloud noble deb
+    - name: Deploy if release to packagecloud for noble
       if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
       uses: computology/packagecloud-github-action@v0.8
       with:
