@@ -19,10 +19,10 @@ env:
 
 # when to run workflow
 on:
-  # # run on push or pull request events for the master branch
-  # push:
-  #   tags:
-  #     - "v*.*.*"
+  # run on push or pull request events for the master branch
+  push:
+    tags:
+      - "v*.*.*"
 
   # allows you to run this workflow manually from the actions tab
   workflow_dispatch:
