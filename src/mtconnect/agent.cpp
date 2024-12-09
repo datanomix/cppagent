@@ -232,6 +232,8 @@ namespace mtconnect {
       // Start all the sources
       for (auto source : m_sources)
         source->start();
+      
+      m_afterStartHooks.exec(*this);
     }
     catch (std::runtime_error &e)
     {
@@ -568,27 +570,7 @@ namespace mtconnect {
         LOG(error) << "Device does not have a name: " << *device->getUuid();
         return false;
       }
-
-      // if different,  and revise to new device leaving in place
-      // the asset changed, removed, and availability data items
-      ErrorList errors;
-      if (auto odi = oldDev->getAssetChanged(), ndi = device->getAssetChanged(); odi && !ndi)
-        device->addDataItem(odi, errors);
-      if (auto odi = oldDev->getAssetRemoved(), ndi = device->getAssetRemoved(); odi && !ndi)
-        device->addDataItem(odi, errors);
-      if (auto odi = oldDev->getAvailability(), ndi = device->getAvailability(); odi && !ndi)
-        device->addDataItem(odi, errors);
-      if (auto odi = oldDev->getAssetCount(), ndi = device->getAssetCount(); odi && !ndi)
-        device->addDataItem(odi, errors);
-
-      if (errors.size() > 0)
-      {
-        LOG(error) << "Error adding device required data items for " << *device->getUuid() << ':';
-        for (const auto &e : errors)
-          LOG(error) << "  " << e->what();
-        return false;
-      }
-
+      
       verifyDevice(device);
       createUniqueIds(device);
 
@@ -928,9 +910,6 @@ namespace mtconnect {
   void Agent::initializeDataItems(DevicePtr device, std::optional<std::set<std::string>> skip)
   {
     NAMED_SCOPE("Agent::initializeDataItems");
-
-    // Grab data from configuration
-    string time = getCurrentTime(GMT_UV_SEC);
 
     // Initialize the id mapping for the devices and set all data items to UNAVAILABLE
     for (auto item : device->getDeviceDataItems())
