@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2022, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,7 @@
 #include "mtconnect/device_model/configuration/configuration.hpp"
 #include "mtconnect/device_model/device.hpp"
 #include "mtconnect/logging.hpp"
+#include "mtconnect/sink/rest_sink/error.hpp"
 #include "mtconnect/version.h"
 #include "xml_printer.hpp"
 
@@ -100,7 +101,10 @@ namespace mtconnect::printer {
     xmlBufferPtr m_buf;
   };
 
-  XmlPrinter::XmlPrinter(bool pretty) : Printer(pretty) { NAMED_SCOPE("xml.printer"); }
+  XmlPrinter::XmlPrinter(bool pretty, bool validation) : Printer(pretty, validation)
+  {
+    NAMED_SCOPE("xml.printer");
+  }
 
   void XmlPrinter::addDevicesNamespace(const std::string &urn, const std::string &location,
                                        const std::string &prefix)
@@ -340,8 +344,8 @@ namespace mtconnect::printer {
   }
 
   std::string XmlPrinter::printErrors(const uint64_t instanceId, const unsigned int bufferSize,
-                                      const uint64_t nextSeq, const ProtoErrorList &list,
-                                      bool pretty) const
+                                      const uint64_t nextSeq, const entity::EntityList &list,
+                                      bool pretty, const std::optional<std::string> requestId) const
   {
     string ret;
 
@@ -349,13 +353,23 @@ namespace mtconnect::printer {
     {
       XmlWriter writer(m_pretty || pretty);
 
-      initXmlDoc(writer, eERROR, instanceId, bufferSize, 0, 0, nextSeq, nextSeq - 1);
+      initXmlDoc(writer, eERROR, instanceId, bufferSize, 0, 0, nextSeq, 0, nextSeq - 1, nullptr,
+                 requestId);
 
       {
         AutoElement e1(writer, "Errors");
+        entity::XmlPrinter printer;
+
+        auto version = IntSchemaVersion(*m_schemaVersion);
         for (auto &e : list)
         {
-          addSimpleElement(writer, "Error", e.second, {{"errorCode", e.first}});
+          entity::EntityPtr err {e};
+          if (version < SCHEMA_VERSION(2, 6))
+          {
+            auto re = dynamic_pointer_cast<sink::rest_sink::Error>(err);
+            err = re->makeLegacyError();
+          }
+          printer.print(writer, err, m_errorNsSet);
         }
       }
       closeElement(writer);  // MTConnectError
@@ -379,7 +393,7 @@ namespace mtconnect::printer {
                                 const uint64_t nextSeq, const unsigned int assetBufferSize,
                                 const unsigned int assetCount, const list<DevicePtr> &deviceList,
                                 const std::map<std::string, size_t> *count, bool includeHidden,
-                                bool pretty) const
+                                bool pretty, const std::optional<std::string> requestId) const
   {
     string ret;
 
@@ -388,7 +402,7 @@ namespace mtconnect::printer {
       XmlWriter writer(m_pretty || pretty);
 
       initXmlDoc(writer, eDEVICES, instanceId, bufferSize, assetBufferSize, assetCount, nextSeq, 0,
-                 nextSeq - 1, count);
+                 nextSeq - 1, count, requestId);
 
       {
         AutoElement devices(writer, "Devices");
@@ -439,8 +453,8 @@ namespace mtconnect::printer {
 
   string XmlPrinter::printSample(const uint64_t instanceId, const unsigned int bufferSize,
                                  const uint64_t nextSeq, const uint64_t firstSeq,
-                                 const uint64_t lastSeq, ObservationList &observations,
-                                 bool pretty) const
+                                 const uint64_t lastSeq, ObservationList &observations, bool pretty,
+                                 const std::optional<std::string> requestId) const
   {
     string ret;
 
@@ -448,7 +462,8 @@ namespace mtconnect::printer {
     {
       XmlWriter writer(m_pretty || pretty);
 
-      initXmlDoc(writer, eSTREAMS, instanceId, bufferSize, 0, 0, nextSeq, firstSeq, lastSeq);
+      initXmlDoc(writer, eSTREAMS, instanceId, bufferSize, 0, 0, nextSeq, firstSeq, lastSeq,
+                 nullptr, requestId);
 
       AutoElement streams(writer, "Streams");
 
@@ -519,14 +534,15 @@ namespace mtconnect::printer {
   }
 
   string XmlPrinter::printAssets(const uint64_t instanceId, const unsigned int bufferSize,
-                                 const unsigned int assetCount, const AssetList &asset,
-                                 bool pretty) const
+                                 const unsigned int assetCount, const AssetList &asset, bool pretty,
+                                 const std::optional<std::string> requestId) const
   {
     string ret;
     try
     {
       XmlWriter writer(m_pretty || pretty);
-      initXmlDoc(writer, eASSETS, instanceId, 0u, bufferSize, assetCount, 0ull);
+      initXmlDoc(writer, eASSETS, instanceId, 0u, bufferSize, assetCount, 0ull, 0, 0, nullptr,
+                 requestId);
 
       {
         AutoElement ele(writer, "Assets");
@@ -562,7 +578,8 @@ namespace mtconnect::printer {
                               const uint64_t instanceId, const unsigned int bufferSize,
                               const unsigned int assetBufferSize, const unsigned int assetCount,
                               const uint64_t nextSeq, const uint64_t firstSeq,
-                              const uint64_t lastSeq, const map<string, size_t> *count) const
+                              const uint64_t lastSeq, const map<string, size_t> *count,
+                              const std::optional<std::string> requestId) const
   {
     THROW_IF_XML2_ERROR(xmlTextWriterStartDocument(writer, nullptr, "UTF-8", nullptr));
 
@@ -661,17 +678,20 @@ namespace mtconnect::printer {
     addAttribute(writer, "sender", m_senderName);
     addAttribute(writer, "instanceId", to_string(instanceId));
 
+    if (m_validation)
+      addAttribute(writer, "validation", "true"s);
+
     char version[32] = {0};
     sprintf(version, "%d.%d.%d.%d", AGENT_VERSION_MAJOR, AGENT_VERSION_MINOR, AGENT_VERSION_PATCH,
             AGENT_VERSION_BUILD);
     addAttribute(writer, "version", version);
 
-    int major, minor;
-    char c;
-    stringstream v(*m_schemaVersion);
-    v >> major >> c >> minor;
+    if (requestId)
+      addAttribute(writer, "requestId", *requestId);
 
-    if (major > 1 || (major == 1 && minor >= 7))
+    auto schemaVersion = IntSchemaVersion(*m_schemaVersion);
+
+    if (schemaVersion >= SCHEMA_VERSION(1, 7))
     {
       addAttribute(writer, "deviceModelChangeTime", m_modelChangeTime);
     }
@@ -695,7 +715,7 @@ namespace mtconnect::printer {
       addAttribute(writer, "lastSequence", to_string(lastSeq));
     }
 
-    if (major < 2 && aType == eDEVICES && count && !count->empty())
+    if (schemaVersion < SCHEMA_VERSION(2, 0) && aType == eDEVICES && count && !count->empty())
     {
       AutoElement ele(writer, "AssetCounts");
 

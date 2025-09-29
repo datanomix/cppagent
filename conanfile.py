@@ -9,7 +9,7 @@ import re
 
 class MTConnectAgentConan(ConanFile):
     name = "mtconnect_agent"
-    version = "2.4"
+    version = "2.6"
     url = "https://github.com/mtconnect/cppagent.git"
     license = "Apache License 2.0"
     settings = "os", "compiler", "arch", "build_type"
@@ -72,7 +72,7 @@ class MTConnectAgentConan(ConanFile):
         }
 
     exports_sources = "*", "!build", "!test_package/build", "!*~"
-    exports = "conan/mqtt_cpp/*", "conan/mruby/*"
+    exports = "conan/mqtt_cpp/*", "conan/mruby/*", "conan/oniguruma/*"
 
     def validate(self):
         if is_msvc(self) and self.options.shared and self.settings.compiler.runtime != 'dynamic':
@@ -115,12 +115,12 @@ class MTConnectAgentConan(ConanFile):
     def build_requirements(self):
         self.tool_requires_version("cmake", [3, 26, 4])
         if self.options.with_docs:
-            self.tool_requires_version("doxygen", [1, 9, 4])
+            self.tool_requires_version("doxygen", [1, 14, 0])
 
     def requirements(self):
         self.requires("boost/1.85.0", headers=True, libs=True, transitive_headers=True, transitive_libs=True)
         self.requires("libxml2/2.10.3", headers=True, libs=True, visible=True, transitive_headers=True, transitive_libs=True)
-        self.requires("date/2.4.1", headers=True, libs=True, transitive_headers=True, transitive_libs=True)
+        self.requires("date/3.0.4", headers=True, libs=True, transitive_headers=True, transitive_libs=True)
         self.requires("nlohmann_json/3.9.1", headers=True, libs=False, transitive_headers=True, transitive_libs=False)
         self.requires("openssl/3.0.8", headers=True, libs=True, transitive_headers=True, transitive_libs=True)
         self.requires("rapidjson/cci.20220822", headers=True, libs=False, transitive_headers=True, transitive_libs=False)
@@ -143,6 +143,9 @@ class MTConnectAgentConan(ConanFile):
         if is_msvc(self):
             self.options["boost/*"].extra_b2_flags = ("define=BOOST_USE_WINAPI_VERSION=" + str(self.options.winver))
             
+        if is_msvc(self):
+            self.options["boost/*"].extra_b2_flags = ("define=BOOST_USE_WINAPI_VERSION=" + str(self.options.winver))
+            
         # Make sure shared builds use shared boost
         if is_msvc(self) and self.options.shared:
             print("**** Making boost, libxml2, gtest, and openssl shared")
@@ -154,6 +157,7 @@ class MTConnectAgentConan(ConanFile):
         self.run("conan export conan/mqtt_cpp", cwd=os.path.dirname(__file__))
         if self.options.with_ruby:
             self.run("conan export conan/mruby", cwd=os.path.dirname(__file__))
+            self.run("conan export conan/oniguruma", cwd=os.path.dirname(__file__))
 
         if not self.options.cpack_generator:
             if is_msvc(self):

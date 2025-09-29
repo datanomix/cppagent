@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2022, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,9 @@
 #include <functional>
 #include <memory>
 
+#include "error.hpp"
 #include "mtconnect/config.hpp"
+#include "mtconnect/observation/change_observer.hpp"
 #include "routing.hpp"
 
 namespace mtconnect::sink::rest_sink {
@@ -32,8 +34,7 @@ namespace mtconnect::sink::rest_sink {
   using ResponsePtr = std::unique_ptr<Response>;
   class Session;
   using SessionPtr = std::shared_ptr<Session>;
-  using ErrorFunction =
-      std::function<void(SessionPtr, boost::beast::http::status status, const std::string &msg)>;
+  using ErrorFunction = std::function<void(SessionPtr, const RestError &error)>;
 
   using Dispatch = std::function<bool(SessionPtr, RequestPtr)>;
   using Complete = std::function<void()>;
@@ -64,11 +65,13 @@ namespace mtconnect::sink::rest_sink {
     /// @brief begin streaming data to the client using x-multipart-replace
     /// @param mimeType the mime type of the response
     /// @param complete completion callback
-    virtual void beginStreaming(const std::string &mimeType, Complete complete) = 0;
+    virtual void beginStreaming(const std::string &mimeType, Complete complete,
+                                std::optional<std::string> requestId = std::nullopt) = 0;
     /// @brief write a chunk for a streaming session
     /// @param chunk the chunk to write
     /// @param complete a completion callback
-    virtual void writeChunk(const std::string &chunk, Complete complete) = 0;
+    virtual void writeChunk(const std::string &chunk, Complete complete,
+                            std::optional<std::string> requestId = std::nullopt) = 0;
     /// @brief close the session
     virtual void close() = 0;
     /// @brief close the stream
@@ -90,7 +93,9 @@ namespace mtconnect::sink::rest_sink {
       }
       else
       {
-        m_errorFunction(shared_from_this(), status, message);
+        auto error = Error::make(Error::ErrorCode::INTERNAL_ERROR, message);
+        RestError re(error, "application/xml", status);
+        m_errorFunction(shared_from_this(), re);
       }
     }
 
@@ -116,6 +121,26 @@ namespace mtconnect::sink::rest_sink {
       m_unauthorized = true;
     }
 
+    /// @brief Add an observer to the list for cleanup later.
+    void addObserver(std::weak_ptr<observation::AsyncResponse> observer)
+    {
+      m_observers.push_back(observer);
+    }
+
+    bool cancelRequest(const std::string &requestId)
+    {
+      for (auto &obs : m_observers)
+      {
+        auto pobs = obs.lock();
+        if (pobs && pobs->getRequestId() == requestId)
+        {
+          pobs->cancel();
+          return true;
+        }
+      }
+      return false;
+    }
+
   protected:
     Dispatch m_dispatch;
     ErrorFunction m_errorFunction;
@@ -125,6 +150,7 @@ namespace mtconnect::sink::rest_sink {
     bool m_allowPuts {false};
     std::set<boost::asio::ip::address> m_allowPutsFrom;
     boost::asio::ip::tcp::endpoint m_remote;
+    std::list<std::weak_ptr<observation::AsyncResponse>> m_observers;
   };
 
 }  // namespace mtconnect::sink::rest_sink
