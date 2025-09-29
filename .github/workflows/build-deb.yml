@@ -30,8 +30,8 @@ jobs:
   build_linux:
     env:
       PACKAGE_VERSION: ${{ github.ref_name }}
-    runs-on: ubuntu-20.04
-    name: "Ubuntu 20.04, Shared: ${{ matrix.shared }}"
+    runs-on: ubuntu-22.04
+    name: "Ubuntu 22.04, Shared: ${{ matrix.shared }}"
     strategy:
       matrix:
         shared: ["True"]
@@ -102,15 +102,6 @@ jobs:
         arch: all
         desc: "MTConnect Agent for Linux"
         maintainer: Datanomix <support@datanomix.io>
-    - name: Deploy if release to packagecloud for focal
-      if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
-      uses: computology/packagecloud-github-action@v0.8
-      with:
-        package-name: ${{github.workspace}}/${{steps.create_debian_package.outputs.file_name}}
-        packagecloud-username: datanomix
-        packagecloud-reponame: dnx-edge
-        packagecloud-distro: ubuntu/focal
-        packagecloud-token: ${{ secrets.PACKAGE_CLOUD_API_WRITE_TOKEN }}
 
     - name: Deploy if release to packagecloud for jammy
       if: ${{ env.PACKAGE_VERSION != '0.0.0.0' }}
