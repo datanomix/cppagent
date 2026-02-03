@@ -40,7 +40,9 @@ jobs:
     - name: Install dependencies
       shell: bash
       run: |
-        sudo apt install -y build-essential cmake gcc g++ python3 python3-pip autoconf automake rake ruby
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+        sudo apt update
+        sudo apt install -y build-essential cmake gcc-13 g++-13 python3 python3-pip autoconf automake rake ruby
       
     - name: Checkout Agent
       uses: actions/checkout@v3
@@ -68,6 +70,8 @@ jobs:
 
     - name: Build C++ Agent
       shell: bash
+      env:
+        LDFLAGS: "-static-libgcc -static-libstdc++"
       run: |
         export CTEST_OUTPUT_ON_FAILURE=TRUE
         conan create . --build=missing -pr conan/profiles/gcc  -o shared=${{ matrix.shared }} -o cpack=True -o cpack_name=dist -o cpack_destination=${{ github.workspace }} --test-folder=
