@@ -221,6 +221,10 @@ add_agent_test(asset_hash TRUE asset)
 add_agent_test(physical_asset FALSE asset)
 add_agent_test(pallet FALSE asset)
 add_agent_test(fixture FALSE asset)
+add_agent_test(target FALSE asset)
+add_agent_test(process FALSE asset)
+add_agent_test(part FALSE asset)
+add_agent_test(task FALSE asset)
 
 add_agent_test(agent_device TRUE device_model)
 add_agent_test(component FALSE device_model)
@@ -249,6 +253,7 @@ add_agent_test(qname FALSE entity)
 add_agent_test(file_cache FALSE sink/rest_sink)
 add_agent_test(http_server FALSE sink/rest_sink TRUE)
 add_agent_test(websockets FALSE sink/rest_sink TRUE)
+add_agent_test(websockets_rest_sink FALSE sink/rest_sink TRUE)
 add_agent_test(tls_http_server FALSE sink/rest_sink TRUE)
 add_agent_test(routing FALSE sink/rest_sink)
 
@@ -285,7 +290,7 @@ add_agent_test(correct_timestamp TRUE pipeline)
 
 add_agent_test(agent TRUE core)
 add_agent_test(agent_asset TRUE core)
-add_agent_test(globals FALSE core)
+add_agent_test(utilities FALSE core)
 
 add_agent_test(config_parser FALSE configuration)
 add_agent_test(config FALSE configuration)
@@ -297,6 +302,7 @@ add_agent_test(table TRUE observation)
 
 add_agent_test(checkpoint FALSE buffer)
 add_agent_test(circular_buffer FALSE buffer)
+add_agent_test(mqtt_entity_sink FALSE sink/mqtt_entity_sink TRUE)
 
 
 if (WITH_RUBY)

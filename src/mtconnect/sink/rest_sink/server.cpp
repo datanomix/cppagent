@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -100,7 +100,7 @@ namespace mtconnect::sink::rest_sink {
     catch (exception &e)
     {
       LOG(fatal) << "Cannot start server: " << e.what();
-      std::exit(1);
+      throw FatalException(e.what());
     }
   }
 

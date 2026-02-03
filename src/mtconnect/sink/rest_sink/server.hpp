@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,6 +89,9 @@ namespace mtconnect::sink::rest_sink {
 
     /// @brief Start the http server
     void start();
+
+    /// @brief Simulate running the server for testing
+    void simulateRun() { m_run = true; }
 
     /// @brief Shutdown the http server
     void stop()

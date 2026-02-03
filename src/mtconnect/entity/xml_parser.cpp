@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ using namespace std;
 namespace mtconnect::entity {
   using namespace mtconnect::printer;
 
-  extern "C" void XMLCDECL entityXMLErrorFunc(void *ctx ATTRIBUTE_UNUSED, const char *msg, ...)
+  extern "C" void XMLCDECL entityXMLErrorFunc([[maybe_unused]] void *ctx, const char *msg, ...)
   {
     va_list args;
 
@@ -225,6 +225,11 @@ namespace mtconnect::entity {
         if (holds_alternative<string>(value))
           properties.insert({"RAW", value});
       }
+      else if (ef->isValueDataSet())
+      {
+        auto ds = &properties["VALUE"].emplace<DataSet>();
+        parseDataSet<DataSet, DataSetValue>(node, *ds, ef->isValueTable());
+      }
       else
       {
         int orderCount = 0;
@@ -333,7 +338,6 @@ namespace mtconnect::entity {
     try
     {
       xmlInitParser();
-      xmlXPathInit();
       xmlSetGenericErrorFunc(nullptr, entityXMLErrorFunc);
 
       unique_ptr<xmlDoc, function<void(xmlDocPtr)>> doc(

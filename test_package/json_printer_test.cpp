@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -356,10 +356,8 @@ TEST_F(JsonPrinterTest, elements_with_property_list_version_2)
   json jdoc = json::parse(sdoc);
 
   ASSERT_EQ(2, jdoc.at("/Root/CuttingItems/count"_json_pointer).get<int>());
-  ASSERT_EQ("1",
-            jdoc.at("/Root/CuttingItems/list/CuttingItem/0/itemId"_json_pointer).get<string>());
-  ASSERT_EQ("2",
-            jdoc.at("/Root/CuttingItems/list/CuttingItem/1/itemId"_json_pointer).get<string>());
+  ASSERT_EQ("1", jdoc.at("/Root/CuttingItems/CuttingItem/0/itemId"_json_pointer).get<string>());
+  ASSERT_EQ("2", jdoc.at("/Root/CuttingItems/CuttingItem/1/itemId"_json_pointer).get<string>());
 }
 
 TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
@@ -392,12 +390,12 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
                 "Components": [
                   {
                     "Electric": {
-                      "id": "Pm2JhGKEeAYzVA8c"
+                      "id": "hIltPgZ4hGIcD1Qz"
                     }
                   },
                   {
                     "Heating": {
-                      "id": "culKrBObwYWb6x0g"
+                      "id": "rErpcoXBmxMgHeub"
                     }
                   }
                 ],
@@ -405,7 +403,7 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
                   "value": "Hey Will",
                   "model": "abc"
                 },
-                "id": "_cNZEyq5kGkgppmh"
+                "id": "ZA2H50HmqkxmmoKk"
               }
             }
           ],
@@ -413,7 +411,7 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "FFZeJQRwQvAdUJX4",
+                "id": "JV5WFPBCcAT4lVAd",
                 "name": "avail",
                 "type": "AVAILABILITY"
               }
@@ -421,19 +419,19 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "T0qItk3igtyip1XX",
+                "id": "tohKT9C4k1nYryEA",
                 "type": "ASSET_CHANGED"
               }
             },
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "LWOt9yZtpFPWjL7v",
+                "id": "F1jLVOkbSb7Mv7WI",
                 "type": "ASSET_REMOVED"
               }
             }
           ],
-          "id": "DFYX7ls4d4to2Lhb",
+          "id": "AdWDIt3OFtbuNhoe",
           "name": "foo",
           "uuid": "xxx"
         }
@@ -467,13 +465,13 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
                 "Components": [
                   {
                     "Electric": {
-                      "id": "Pm2JhGKEeAYzVA8c",
+                      "id": "hIltPgZ4hGIcD1Qz",
                       "originalId": "e1"
                     }
                   },
                   {
                     "Heating": {
-                      "id": "culKrBObwYWb6x0g",
+                      "id": "rErpcoXBmxMgHeub",
                       "originalId": "h1"
                     }
                   }
@@ -482,7 +480,7 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
                   "value": "Hey Will",
                   "model": "abc"
                 },
-                "id": "_cNZEyq5kGkgppmh",
+                "id": "ZA2H50HmqkxmmoKk",
                 "originalId": "s1"
               }
             }
@@ -491,7 +489,7 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "FFZeJQRwQvAdUJX4",
+                "id": "JV5WFPBCcAT4lVAd",
                 "name": "avail",
                 "originalId": "avail",
                 "type": "AVAILABILITY"
@@ -500,7 +498,7 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "T0qItk3igtyip1XX",
+                "id": "tohKT9C4k1nYryEA",
                 "originalId": "d1_asset_chg",
                 "type": "ASSET_CHANGED"
               }
@@ -508,13 +506,13 @@ TEST_F(JsonPrinterTest, should_honor_include_hidden_parameter)
             {
               "DataItem": {
                 "category": "EVENT",
-                "id": "LWOt9yZtpFPWjL7v",
+                "id": "F1jLVOkbSb7Mv7WI",
                 "originalId": "d1_asset_rem",
                 "type": "ASSET_REMOVED"
               }
             }
           ],
-          "id": "DFYX7ls4d4to2Lhb",
+          "id": "AdWDIt3OFtbuNhoe",
           "name": "foo",
           "originalId": "d1",
           "uuid": "xxx"

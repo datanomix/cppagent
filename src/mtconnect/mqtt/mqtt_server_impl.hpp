@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 
 #include <inttypes.h>
 #include <mqtt/async_client.hpp>
+#include <mqtt/broker/topic_filter.hpp>
 #include <mqtt/setup_log.hpp>
 #include <mqtt_server_cpp.hpp>
 
@@ -217,12 +218,12 @@ namespace mtconnect {
             LOG(debug) << "Server topic_name: " << topic_name;
             LOG(debug) << "Server contents: " << contents;
 
-            auto const &idx = m_subs.get<tag_topic>();
-            auto r = idx.equal_range(topic_name);
-            for (; r.first != r.second; ++r.first)
+            for (const auto &sub : m_subs)
             {
-              r.first->con->publish(topic_name, contents,
-                                    std::min(r.first->qos_value, pubopts.get_qos()));
+              if (mqtt::broker::compare_topic_filter(sub.topic, topic_name))
+              {
+                sub.con->publish(topic_name, contents, std::min(sub.qos_value, pubopts.get_qos()));
+              }
             }
 
             return true;

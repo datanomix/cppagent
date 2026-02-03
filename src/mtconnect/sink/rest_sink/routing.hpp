@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -282,6 +282,10 @@ namespace mtconnect::sink::rest_sink {
                                                      p.getTypeName(), p.getTypeFormat(), msg);
             errors.emplace_back(error);
           }
+        }
+        else if (!std::holds_alternative<std::monostate>(p.m_default))
+        {
+          request->m_parameters.emplace(make_pair(p.m_name, p.m_default));
         }
       }
 

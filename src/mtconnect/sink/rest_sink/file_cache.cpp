@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -263,7 +263,7 @@ namespace mtconnect::sink::rest_sink {
 
     for (const auto &dir : m_directories)
     {
-      if (boost::starts_with(name, dir.first))
+      if (name.starts_with(dir.first))
       {
         auto fileName = boost::erase_first_copy(name, dir.first);
         if (fileName.empty())
@@ -382,7 +382,7 @@ namespace mtconnect::sink::rest_sink {
     if (fs::exists(path))
     {
       string root(uri);
-      if (boost::ends_with(root, "/"))
+      if (root.ends_with("/"))
       {
         boost::erase_last(root, "/");
       }

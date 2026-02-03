@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +62,7 @@ namespace mtconnect::parser {
   using namespace device_model;
   using namespace printer;
 
-  extern "C" void XMLCDECL agentXMLErrorFunc(void *ctx ATTRIBUTE_UNUSED, const char *msg, ...)
+  extern "C" void XMLCDECL agentXMLErrorFunc([[maybe_unused]] void *ctx, const char *msg, ...)
   {
     va_list args;
 
@@ -114,7 +114,6 @@ namespace mtconnect::parser {
     try
     {
       xmlInitParser();
-      xmlXPathInit();
       xmlSetGenericErrorFunc(nullptr, agentXMLErrorFunc);
 
       THROW_IF_XML2_NULL(m_doc = xmlReadFile(filePath.c_str(), nullptr, XML_PARSE_NOBLANKS));
@@ -227,7 +226,7 @@ namespace mtconnect::parser {
         xmlXPathFreeContext(xpathCtx);
 
       LOG(fatal) << "Cannot parse XML file: " << e;
-      throw;
+      throw FatalException(e);
     }
     catch (...)
     {
@@ -237,7 +236,7 @@ namespace mtconnect::parser {
       if (xpathCtx)
         xmlXPathFreeContext(xpathCtx);
 
-      throw;
+      throw FatalException();
     }
 
     return deviceList;
@@ -272,7 +271,7 @@ namespace mtconnect::parser {
     catch (string e)
     {
       LOG(fatal) << "Cannot parse XML document: " << e;
-      throw;
+      throw FatalException();
     }
 
     return device;
@@ -302,7 +301,6 @@ namespace mtconnect::parser {
     try
     {
       xmlInitParser();
-      xmlXPathInit();
       xmlSetGenericErrorFunc(nullptr, agentXMLErrorFunc);
 
       THROW_IF_XML2_NULL(m_doc = xmlReadMemory(doc.c_str(), int32_t(doc.length()), "Devices.xml",
@@ -312,7 +310,7 @@ namespace mtconnect::parser {
     catch (string e)
     {
       LOG(fatal) << "Cannot parse XML document: " << e;
-      throw;
+      throw FatalException();
     }
   }
 

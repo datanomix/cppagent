@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,10 +84,8 @@ namespace mtconnect::pipeline {
                                                                     Now now = DefaultNow)
   {
     using namespace std;
-    using namespace date;
     using namespace chrono;
     using namespace chrono_literals;
-    using namespace date::literals;
     using namespace date;
 
     // Extract duration
@@ -104,7 +102,8 @@ namespace mtconnect::pipeline {
     if (has_t)
     {
       istringstream in(timestamp.data());
-      in >> std::setw(6) >> parse("%FT%T", result);
+      in >> std::setw(6);
+      date::from_stream(in, "%FT%T", result);
       if (!in.good())
       {
         result = now();

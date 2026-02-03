@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -107,6 +107,9 @@ namespace mtconnect {
     DECLARE_CONFIGURATION(MqttMaxTopicDepth);
     DECLARE_CONFIGURATION(MqttLastWillTopic);
     DECLARE_CONFIGURATION(MqttXPath);
+    DECLARE_CONFIGURATION(ObservationTopicPrefix);
+    DECLARE_CONFIGURATION(DeviceTopicPrefix);
+    DECLARE_CONFIGURATION(AssetTopicPrefix);
     ///@}
 
     /// @name Adapter Configuration

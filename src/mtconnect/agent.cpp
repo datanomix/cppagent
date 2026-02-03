@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,8 +48,11 @@
 #include "mtconnect/asset/file_asset.hpp"
 #include "mtconnect/asset/fixture.hpp"
 #include "mtconnect/asset/pallet.hpp"
+#include "mtconnect/asset/part.hpp"
+#include "mtconnect/asset/process.hpp"
 #include "mtconnect/asset/qif_document.hpp"
 #include "mtconnect/asset/raw_material.hpp"
+#include "mtconnect/asset/task.hpp"
 #include "mtconnect/configuration/config_options.hpp"
 #include "mtconnect/device_model/agent_device.hpp"
 #include "mtconnect/entity/xml_parser.hpp"
@@ -102,6 +105,12 @@ namespace mtconnect {
     ComponentConfigurationParameters::registerAsset();
     Pallet::registerAsset();
     Fixture::registerAsset();
+    Process::registerAsset();
+    ProcessArchetype::registerAsset();
+    Part::registerAsset();
+    PartArchetype::registerAsset();
+    Task::registerAsset();
+    TaskArchetype::registerAsset();
 
     m_assetStorage = make_unique<AssetBuffer>(
         GetOption<int>(options, mtconnect::configuration::MaxAssets).value_or(1024));
@@ -252,7 +261,7 @@ namespace mtconnect {
     catch (std::runtime_error &e)
     {
       LOG(fatal) << "Cannot start server: " << e.what();
-      std::exit(1);
+      throw FatalException(e.what());
     }
 
     m_started = true;
@@ -436,14 +445,14 @@ namespace mtconnect {
       LOG(fatal) << "Error loading xml configuration: " + deviceFile;
       LOG(fatal) << "Error detail: " << e.what();
       cerr << e.what() << endl;
-      throw e;
+      throw FatalException(e.what());
     }
     catch (exception &f)
     {
       LOG(fatal) << "Error loading xml configuration: " + deviceFile;
       LOG(fatal) << "Error detail: " << f.what();
       cerr << f.what() << endl;
-      throw f;
+      throw FatalException(f.what());
     }
   }
 
@@ -477,7 +486,7 @@ namespace mtconnect {
       return;
     }
 
-    auto callback = [=](config::AsyncContext &context) {
+    auto callback = [=, this](config::AsyncContext &context) {
       try
       {
         bool changed = false;
@@ -524,6 +533,10 @@ namespace mtconnect {
 
         if (changed)
           loadCachedProbe();
+      }
+      catch (FatalException &e)
+      {
+        throw e;
       }
       catch (runtime_error &e)
       {
@@ -604,7 +617,7 @@ namespace mtconnect {
       createUniqueIds(device);
 
       LOG(info) << "Checking if device " << *uuid << " has changed";
-      if (*device != *oldDev)
+      if (device->different(*oldDev))
       {
         LOG(info) << "Device " << *uuid << " changed, updating model";
 
@@ -832,7 +845,7 @@ namespace mtconnect {
     {
       for (auto &e : errors)
         LOG(fatal) << "Error creating the agent device: " << e->what();
-      throw EntityError("Cannot create AgentDevice");
+      throw FatalException("Cannot create AgentDevice");
     }
     addDevice(m_agentDevice);
   }
@@ -870,14 +883,14 @@ namespace mtconnect {
       LOG(fatal) << "Error loading xml configuration: " + configXmlPath;
       LOG(fatal) << "Error detail: " << e.what();
       cerr << e.what() << endl;
-      throw e;
+      throw FatalException(e.what());
     }
     catch (exception &f)
     {
       LOG(fatal) << "Error loading xml configuration: " + configXmlPath;
       LOG(fatal) << "Error detail: " << f.what();
       cerr << f.what() << endl;
-      throw f;
+      throw FatalException(f.what());
     }
 
     return {};
@@ -976,9 +989,13 @@ namespace mtconnect {
         auto di = m_dataItemMap[d->getId()].lock();
         if (di && di != d)
         {
-          LOG(fatal) << "Duplicate DataItem id " << d->getId()
-                     << " for device: " << *device->getComponentName();
-          std::exit(1);
+          stringstream msg;
+
+          msg << "Duplicate DataItem id " << d->getId()
+              << " for device: " << *device->getComponentName()
+              << ". Try using configuration option CreateUniqueIds to resolve.";
+          LOG(fatal) << msg.str();
+          throw FatalException(msg.str());
         }
       }
       else
@@ -1008,9 +1025,10 @@ namespace mtconnect {
     if (old != idx.end())
     {
       // Update existing device
-      LOG(fatal) << "Device " << *device->getUuid() << " already exists. "
-                 << " Update not supported yet";
-      std::exit(1);
+      stringstream msg;
+      msg << "Device " << *device->getUuid() << " already exists. "
+          << " Update not supported yet";
+      throw msg.str();
     }
     else
     {

@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,7 @@
 #include <chrono>
 #include <date/date.h>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <mtconnect/version.h>
 #include <optional>
@@ -65,6 +66,40 @@ namespace boost::asio {
 namespace mtconnect {
   // Message for when enumerations do not exist in an array/enumeration
   const int ENUM_MISS = -1;
+
+  /// @brtief Fatal Error Exception
+  /// An exception that get thrown to shut down the application. Only caught by the top level worker
+  /// thread.
+  class FatalException : public std::exception
+  {
+  public:
+    /// @brief Create a fatal exception with a message
+    /// @param str The message
+    FatalException(const std::string &str) : m_what(str) {}
+    /// @brief Create a fatal exception with a message
+    /// @param str The message
+    FatalException(const std::string_view &str) : m_what(str) {}
+    /// @brief Create a fatal exception with a message
+    /// @param str The message
+    FatalException(const char *str) : m_what(str) {}
+    /// @brief Create a default fatal exception
+    /// Has the message `Fatal Exception Occurred`
+    FatalException() : m_what("Fatal Exception Occurred") {}
+    /// @brief Copy construction from an exception
+    /// @param ex the exception
+    FatalException(const std::exception &ex) : m_what(ex.what()) {}
+    /// @brief Defaut construction
+    FatalException(const FatalException &) = default;
+    /// @brief Default destructor
+    ~FatalException() = default;
+
+    /// @brief gets the message
+    /// @returns the message as a string
+    const char *what() const noexcept override { return m_what.c_str(); }
+
+  protected:
+    std::string m_what;
+  };
 
   /// @brief Time formats
   enum TimeFormat
@@ -163,7 +198,7 @@ namespace mtconnect {
   /// @brief Convert text to upper case
   /// @param[in,out] text text
   /// @return upper-case of text as string
-  inline std::string toUpperCase(std::string &text)
+  constexpr std::string &toUpperCase(std::string &text)
   {
     std::transform(text.begin(), text.end(), text.begin(),
                    [](unsigned char c) { return std::toupper(c); });
@@ -174,7 +209,7 @@ namespace mtconnect {
   /// @brief Simple check if a number as a string is negative
   /// @param s the numbeer
   /// @return `true` if positive
-  inline bool isNonNegativeInteger(const std::string &s)
+  constexpr bool isNonNegativeInteger(const std::string &s)
   {
     for (const char c : s)
     {
@@ -188,7 +223,7 @@ namespace mtconnect {
   /// @brief Checks if a string is a valid integer
   /// @param s the string
   /// @return `true` if is `[+-]\d+`
-  inline bool isInteger(const std::string &s)
+  constexpr bool isInteger(const std::string &s)
   {
     auto iter = s.cbegin();
     if (*iter == '-' || *iter == '+')
@@ -203,10 +238,17 @@ namespace mtconnect {
     return true;
   }
 
-  /// @brief Gets the local time
-  /// @param[in] time the time
-  /// @param[out] buf struct tm
-  AGENT_LIB_API void mt_localtime(const time_t *time, struct tm *buf);
+  /// @brief Thread safe localtime function that uses localtime_s or localtime_r based on platform
+  /// @param[in] timer pointer to time_t
+  /// @param[out] buf pointer to tm struct to fill
+  inline void safe_localtime(const std::time_t *timer, std::tm *buf)
+  {
+#ifdef _WINDOWS
+    localtime_s(buf, timer);
+#else
+    localtime_r(timer, buf);
+#endif
+  }
 
   /// @brief Formats the timePoint as  string given the format
   /// @param[in] timePoint the time
@@ -228,12 +270,14 @@ namespace mtconnect {
       case GMT_UV_SEC:
         return date::format(ISO_8601_FMT, date::floor<microseconds>(timePoint));
       case LOCAL:
-        auto time = system_clock::to_time_t(timePoint);
-        struct tm timeinfo = {0};
-        mt_localtime(&time, &timeinfo);
-        char timestamp[64] = {0};
-        strftime(timestamp, 50u, "%Y-%m-%dT%H:%M:%S%z", &timeinfo);
-        return timestamp;
+      {
+        time_t t = std::chrono::system_clock::to_time_t(timePoint);
+        struct tm local;
+        safe_localtime(&t, &local);
+        char buf[64];
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S%z", &local);
+        return string(buf);
+      }
     }
 
     return "";
@@ -325,17 +369,6 @@ namespace mtconnect {
   /// @return the modified path prefixed
   AGENT_LIB_API std::string addNamespace(const std::string aPath, const std::string aPrefix);
 
-  /// @brief determines of a string ends with an ending
-  /// @param[in] value the string to check
-  /// @param[in] ending the ending to verify
-  /// @return `true` if the string ends with ending
-  inline bool ends_with(const std::string &value, const std::string_view &ending)
-  {
-    if (ending.size() > value.size())
-      return false;
-    return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
-  }
-
   /// @brief removes white space at the beginning of a string
   /// @param[in,out] s the string
   /// @return string with spaces removed
@@ -373,17 +406,6 @@ namespace mtconnect {
       return {key.substr(c + 1, std::string::npos), key.substr(0, c)};
     else
       return {key, std::nullopt};
-  }
-
-  /// @brief determines of a string starts with a beginning
-  /// @param[in] value the string to check
-  /// @param[in] beginning the beginning to verify
-  /// @return `true` if the string begins with beginning
-  inline bool starts_with(const std::string &value, const std::string_view &beginning)
-  {
-    if (beginning.size() > value.size())
-      return false;
-    return std::equal(beginning.begin(), beginning.end(), value.begin());
   }
 
   /// @brief Case insensitive equals
@@ -757,14 +779,10 @@ namespace mtconnect {
   /// @return converted `Timestamp`
   inline Timestamp parseTimestamp(const std::string &timestamp)
   {
-    using namespace date;
-    using namespace std::chrono;
-    using namespace std::chrono_literals;
-    using namespace date::literals;
-
     Timestamp ts;
     std::istringstream in(timestamp);
-    in >> std::setw(6) >> parse("%FT%T", ts);
+    in >> std::setw(6);
+    date::from_stream(in, "%FT%T", ts);
     if (!in.good())
     {
       ts = std::chrono::system_clock::now();
@@ -772,7 +790,7 @@ namespace mtconnect {
     return ts;
   }
 
-/// @brief Creates a comparable schema version from a major and minor number
+  /// @brief Creates a comparable schema version from a major and minor number
 #define SCHEMA_VERSION(major, minor) (major * 100 + minor)
 
   /// @brief Get the default schema version of the agent as a string
@@ -819,11 +837,13 @@ namespace mtconnect {
   /// @param[in] sha the sha1 namespace to use as context
   /// @param[in] id the id to use transform
   /// @returns Returns the first 16 characters of the  base 64 encoded sha1
-  inline std::string makeUniqueId(const ::boost::uuids::detail::sha1 &sha, const std::string &id)
+  inline std::string makeUniqueId(const ::boost::uuids::detail::sha1 &contextSha,
+                                  const std::string &id)
   {
     using namespace std;
+    using namespace boost::uuids::detail;
 
-    ::boost::uuids::detail::sha1 sha1(sha);
+    sha1 sha(contextSha);
 
     constexpr string_view startc("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_");
     constexpr auto isIDStartChar = [](unsigned char c) -> bool { return isalpha(c) || c == '_'; };
@@ -831,12 +851,14 @@ namespace mtconnect {
       return isIDStartChar(c) || isdigit(c) || c == '.' || c == '-';
     };
 
-    sha1.process_bytes(id.data(), id.length());
-    unsigned int digest[5];
-    sha1.get_digest(digest);
+    sha.process_bytes(id.data(), id.length());
+    sha1::digest_type digest;
+    sha.get_digest(digest);
+
+    auto data = (unsigned int *)digest;
 
     string s(32, ' ');
-    auto len = boost::beast::detail::base64::encode(s.data(), digest, sizeof(digest));
+    auto len = boost::beast::detail::base64::encode(s.data(), data, sizeof(digest));
 
     s.erase(len - 1);
     s.erase(std::remove_if(++(s.begin()), s.end(), not_fn(isIDChar)), s.end());

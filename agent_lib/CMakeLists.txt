@@ -27,7 +27,11 @@ set(AGENT_SOURCES
         "${SOURCE_DIR}/asset/component_configuration_parameters.hpp"
         "${SOURCE_DIR}/asset/physical_asset.hpp"
         "${SOURCE_DIR}/asset/fixture.hpp"
+        "${SOURCE_DIR}/asset/part.hpp"
+        "${SOURCE_DIR}/asset/process.hpp"
         "${SOURCE_DIR}/asset/pallet.hpp"
+        "${SOURCE_DIR}/asset/target.hpp"
+        "${SOURCE_DIR}/asset/task.hpp"
 
 # src/asset SOURCE_FILES_ONLY
   
@@ -39,7 +43,11 @@ set(AGENT_SOURCES
         "${SOURCE_DIR}/asset/component_configuration_parameters.cpp"
         "${SOURCE_DIR}/asset/physical_asset.cpp"
         "${SOURCE_DIR}/asset/fixture.cpp"
+        "${SOURCE_DIR}/asset/part.cpp"
+        "${SOURCE_DIR}/asset/process.cpp"
         "${SOURCE_DIR}/asset/pallet.cpp"
+        "${SOURCE_DIR}/asset/target.cpp"
+        "${SOURCE_DIR}/asset/task.cpp"
         
 # src/buffer HEADER_FILES_ONLY
 
@@ -257,6 +265,14 @@ set(AGENT_SOURCES
 
 	"${SOURCE_DIR}/sink/mqtt_sink/mqtt_service.cpp"
         
+# src/sink/mqtt_entity_sink HEADER_FILE_ONLY
+
+        "${SOURCE_DIR}/sink/mqtt_entity_sink/mqtt_entity_sink.hpp"
+
+#src/sink/mqtt_entity_sink SOURCE_FILES_ONLY
+
+        "${SOURCE_DIR}/sink/mqtt_entity_sink/mqtt_entity_sink.cpp"
+        
 # src/sink/rest_sink HEADER_FILE_ONLY
         
         "${SOURCE_DIR}/sink/rest_sink/cached_file.hpp"
@@ -272,6 +288,7 @@ set(AGENT_SOURCES
         "${SOURCE_DIR}/sink/rest_sink/session_impl.hpp"
         "${SOURCE_DIR}/sink/rest_sink/tls_dector.hpp"
         "${SOURCE_DIR}/sink/rest_sink/websocket_session.hpp"
+        "${SOURCE_DIR}/sink/rest_sink/websocket_request_manager.hpp"
   
 # src/sink/rest_sink SOURCE_FILES_ONLY
 
@@ -341,6 +358,7 @@ if(MSVC)
   # The modules including Beast required the /bigobj option in Windows
   set_property(SOURCE    
     "${SOURCE_DIR}/sink/mqtt_sink/mqtt_service.cpp"
+    "${SOURCE_DIR}/sink/mqtt_entity_sink/mqtt_entity_sink.cpp"
     "${SOURCE_DIR}/sink/rest_sink/session_impl.cpp"
     "${SOURCE_DIR}/source/adapter/mqtt/mqtt_adapter.cpp"
     "${SOURCE_DIR}/source/adapter/agent_adapter/agent_adapter.cpp"
@@ -384,7 +402,7 @@ target_include_directories(
 target_link_libraries(
   agent_lib
   PUBLIC
-  boost::boost LibXml2::LibXml2 date::date-tz openssl::openssl
+  boost::boost LibXml2::LibXml2 date::date openssl::openssl
   nlohmann_json::nlohmann_json mqtt_cpp::mqtt_cpp 
   rapidjson BZip2::BZip2
   

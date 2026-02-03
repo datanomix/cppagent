@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,9 +60,11 @@ namespace mtconnect {
     {
       if (auto it = m_dataItems.get<ById>().find(di->getId()); it != m_dataItems.get<ById>().end())
       {
-        LOG(fatal) << "Device " << getName() << ": Duplicatie data item id  '" << di->getId()
-                   << "', Exiting";
-        exit(1);
+        stringstream msg;
+        msg << "Device " << getName() << ": Duplicatie data item id  '" << di->getId()
+            << "', Exiting";
+        LOG(fatal) << msg.str();
+        throw FatalException(msg.str());
       }
 
       if (di->hasProperty("Source") && di->getSource()->hasValue())
@@ -82,7 +84,7 @@ namespace mtconnect {
       {
         if (auto it = m_dataItems.get<ByName>().find(*name); it != m_dataItems.get<ByName>().end())
         {
-          LOG(warning) << "Device " << getName() << ": Duplicate source '" << *name
+          LOG(warning) << "Device " << getName() << ": Duplicate name '" << *name
                        << "' found in data item '" << di->getId() << "'. Previous data item: '"
                        << it->lock()->getId() << '\'';
           LOG(warning) << "    Name '" << *name
@@ -93,9 +95,11 @@ namespace mtconnect {
       auto [id, added] = m_dataItems.emplace(di);
       if (!added)
       {
-        LOG(fatal) << "Device " << getName() << ": DataItem '" << di->getId()
-                   << " could not be added, exiting";
-        exit(1);
+        stringstream msg;
+        msg << "Device " << getName() << ": DataItem '" << di->getId()
+            << " could not be added, exiting";
+        LOG(fatal) << msg.str();
+        throw FatalException(msg.str());
       }
     }
 

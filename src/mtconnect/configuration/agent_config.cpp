@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,6 +58,7 @@
 #include "mtconnect/configuration/config_options.hpp"
 #include "mtconnect/device_model/device.hpp"
 #include "mtconnect/printer/xml_printer.hpp"
+#include "mtconnect/sink/mqtt_entity_sink/mqtt_entity_sink.hpp"
 #include "mtconnect/sink/mqtt_sink/mqtt_service.hpp"
 #include "mtconnect/sink/rest_sink/rest_service.hpp"
 #include "mtconnect/source/adapter/agent_adapter/agent_adapter.hpp"
@@ -111,6 +112,7 @@ namespace mtconnect::configuration {
 
     sink::mqtt_sink::MqttService::registerFactory(m_sinkFactory);
     sink::rest_sink::RestService::registerFactory(m_sinkFactory);
+    sink::mqtt_entity_sink::MqttEntitySink::registerFactory(m_sinkFactory);
     adapter::shdr::ShdrAdapter::registerFactory(m_sourceFactory);
     adapter::mqtt_adapter::MqttAdapter::registerFactory(m_sourceFactory);
     adapter::agent_adapter::AgentAdapter::registerFactory(m_sourceFactory);
@@ -182,12 +184,12 @@ namespace mtconnect::configuration {
         buffer << file.rdbuf();
 
         FileFormat fmt = MTCONNECT;
-        if (ends_with(m_configFile.string(), "json"))
+        if (m_configFile.string().ends_with("json"))
         {
           LOG(debug) << "Parsing json configuration";
           fmt = JSON;
         }
-        else if (ends_with(m_configFile.string(), "xml"))
+        else if (m_configFile.string().ends_with("xml"))
         {
           LOG(debug) << "Parsing xml configuration";
           fmt = XML;
@@ -366,7 +368,7 @@ namespace mtconnect::configuration {
 
             using std::placeholders::_1;
 
-            m_monitorTimer.expires_from_now(100ms);
+            m_monitorTimer.expires_after(100ms);
             m_monitorTimer.async_wait(boost::bind(&AgentConfiguration::monitorFiles, this, _1));
           }
           else
@@ -388,11 +390,11 @@ namespace mtconnect::configuration {
 
     using std::placeholders::_1;
 
-    m_monitorTimer.expires_from_now(m_monitorInterval);
+    m_monitorTimer.expires_after(m_monitorInterval);
     m_monitorTimer.async_wait(boost::bind(&AgentConfiguration::monitorFiles, this, _1));
   }
 
-  void AgentConfiguration::start()
+  int AgentConfiguration::start()
   {
     if (m_monitorFiles)
     {
@@ -411,7 +413,7 @@ namespace mtconnect::configuration {
     m_context->setThreadCount(m_workerThreadCount);
     m_beforeStartHooks.exec(*this);
     m_agent->start();
-    m_context->start();
+    return m_context->start();
   }
 
   void AgentConfiguration::stop()
@@ -879,12 +881,12 @@ namespace mtconnect::configuration {
       LOG(fatal) << "Cannot find device configuration file";
       logPaths(LOG_LEVEL(fatal), m_configPaths);
 
-      throw runtime_error(((string) "Please make sure the configuration "
-                                    "file probe.xml or Devices.xml is in the current "
-                                    "directory or specify the correct file "
-                                    "in the configuration file " +
-                           m_configFile.string() + " using Devices = <file>")
-                              .c_str());
+      throw FatalException(((string) "Please make sure the configuration "
+                                     "file probe.xml or Devices.xml is in the current "
+                                     "directory or specify the correct file "
+                                     "in the configuration file " +
+                            m_configFile.string() + " using Devices = <file>")
+                               .c_str());
     }
 
     m_name = get<string>(options[configuration::ServiceName]);
@@ -938,6 +940,8 @@ namespace mtconnect::configuration {
 
     loadAdapters(config, options);
 
+    m_afterAgentHooks.exec(*this);
+
 #ifdef WITH_PYTHON
     configurePython(config, options);
 #endif
@@ -958,7 +962,7 @@ namespace mtconnect::configuration {
     if (host.empty())
     {
       LOG(fatal) << "Malformed URL in configuration file: '" << url << "', exiting";
-      exit(1);
+      throw FatalException();
     }
     options[configuration::Host] = host;
 

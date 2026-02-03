@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,6 +93,9 @@ namespace mtconnect {
       /// @brief Get the callback manager after the agent is created
       /// @return the callback manager
       auto &afterAgentHooks() { return m_afterAgentHooks; }
+      /// @brief Get the callback manager after the config has completed
+      /// @return the callback manager
+      auto &afterConfigHooks() { return m_afterConfigHooks; }
       /// @brief Get the callback manager after the agent is started
       /// @return the callback manager
       auto &beforeStartHooks() { return m_beforeStartHooks; }
@@ -104,7 +107,8 @@ namespace mtconnect {
       /// @brief stops the agent. Used in daemons.
       void stop() override;
       /// @brief starts the agent. Used in daemons.
-      void start() override;
+      /// @return 0 on success
+      int start() override;
       /// @brief initializes the configuration of the agent from the command line parameters
       /// @param[in] options command line parameters
       void initialize(const boost::program_options::variables_map &options) override;
@@ -401,6 +405,7 @@ namespace mtconnect {
 #endif
 
       HookManager<AgentConfiguration> m_afterAgentHooks;
+      HookManager<AgentConfiguration> m_afterConfigHooks;
       HookManager<AgentConfiguration> m_beforeStartHooks;
       HookManager<AgentConfiguration> m_beforeStopHooks;
     };
