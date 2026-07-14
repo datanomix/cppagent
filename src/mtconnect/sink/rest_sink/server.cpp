@@ -49,6 +49,10 @@ namespace mtconnect::sink::rest_sink {
   using std::placeholders::_1;
   using std::placeholders::_2;
 
+  // Delay before re-arming the accept loop after a recoverable accept error so we
+  // don't hot-loop while a transient condition (e.g. fd exhaustion) clears.
+  static constexpr auto ACCEPT_BACKOFF = std::chrono::milliseconds(100);
+
   void Server::loadTlsCertificate()
   {
     if (HasOption(m_options, configuration::TlsCertificateChain) &&
@@ -117,19 +121,19 @@ namespace mtconnect::sink::rest_sink {
     if (ec)
     {
       fail(ec, "Cannot open server socket");
-      return;
+      throw std::runtime_error(std::string("Cannot open server socket: ") + ec.message());
     }
     m_acceptor.set_option(boost::asio::socket_base::reuse_address(true), ec);
     if (ec)
     {
       fail(ec, "Cannot set reuse address");
-      return;
+      throw std::runtime_error(std::string("Cannot set reuse address: ") + ec.message());
     }
     m_acceptor.bind(ep, ec);
     if (ec)
     {
       fail(ec, "Cannot bind to server address");
-      return;
+      throw std::runtime_error(std::string("Cannot bind to server address: ") + ec.message());
     }
     if (m_port == 0)
     {
@@ -140,7 +144,7 @@ namespace mtconnect::sink::rest_sink {
     if (ec)
     {
       fail(ec, "Cannot set listen queue length");
-      return;
+      throw std::runtime_error(std::string("Cannot set listen queue length: ") + ec.message());
     }
 
     m_listening = true;
@@ -177,13 +181,39 @@ namespace mtconnect::sink::rest_sink {
   {
     NAMED_SCOPE("Server::accept");
 
+    if (ec == boost::asio::error::operation_aborted)
+    {
+      // The acceptor was closed during shutdown, do not re-arm.
+      return;
+    }
+
     if (ec)
     {
       LOG(error) << ec.category().message(ec.value()) << ": " << ec.message();
 
       fail(ec, "Accept failed");
+
+      // The acceptor remains open and valid after a non-fatal accept error, so
+      // re-arm after a short backoff to avoid hot-looping while a transient
+      // condition (e.g. fd exhaustion) clears.
+      if (m_run)
+      {
+        m_acceptBackoff.expires_after(ACCEPT_BACKOFF);
+        m_acceptBackoff.async_wait([this](beast::error_code tec) {
+          if (!tec && m_run)
+          {
+            // Count only error-recovery re-arms (not the success-path re-arm or
+            // the operation_aborted shutdown path) for diagnostics / tests.
+            ++m_acceptErrorRearms;
+            m_acceptor.async_accept(net::make_strand(m_context),
+                                    beast::bind_front_handler(&Server::accept, this));
+          }
+        });
+      }
+      return;
     }
-    else if (m_run)
+
+    if (m_run)
     {
       auto dispatcher = [this](SessionPtr session, RequestPtr request) {
         if (!m_run)
@@ -226,7 +256,7 @@ namespace mtconnect::sink::rest_sink {
   // Report a failure
   void Server::fail(beast::error_code ec, char const *what)
   {
-    LOG(error) << " error: " << ec.message();
+    LOG(error) << what << " error: " << ec.message();
   }
 
   using namespace mtconnect::printer;
