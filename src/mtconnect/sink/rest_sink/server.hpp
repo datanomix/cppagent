@@ -20,10 +20,13 @@
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/beast/http/status.hpp>
 #include <boost/bind/bind.hpp>
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
@@ -60,6 +63,7 @@ namespace mtconnect::sink::rest_sink {
         m_options(options),
         m_allowPuts(IsOptionSet(options, configuration::AllowPut)),
         m_acceptor(context),
+        m_acceptBackoff(context),
         m_sslContext(boost::asio::ssl::context::tls)
     {
       auto inter = GetOption<std::string>(options, configuration::ServerIp);
@@ -272,6 +276,10 @@ namespace mtconnect::sink::rest_sink {
     /// @return the error function
     ErrorFunction getErrorFunction() const { return m_errorFunction; }
 
+    /// @brief Number of times the accept loop re-armed after a recoverable accept error.
+    /// @return the cumulative re-arm count (useful for diagnostics / tests)
+    std::uint64_t getAcceptRearmCount() const { return m_acceptErrorRearms; }
+
     /// @name Only for testing
     ///@{
     /// @brief Callback for testing. Allows test to grab the last session dispatched.
@@ -318,6 +326,11 @@ namespace mtconnect::sink::rest_sink {
     std::optional<ParameterDocList> m_parameterDocumentation;
 
     boost::asio::ip::tcp::acceptor m_acceptor;
+    boost::asio::steady_timer m_acceptBackoff;
+    /// Cumulative count of accept-loop re-arms triggered by a recoverable accept
+    /// error (incremented only on the error-recovery path, not normal success or
+    /// shutdown). Exposed via getAcceptRearmCount() for diagnostics / tests.
+    std::atomic<std::uint64_t> m_acceptErrorRearms {0};
     boost::asio::ssl::context m_sslContext;
     bool m_tlsEnabled {false};
     bool m_tlsOnly {false};

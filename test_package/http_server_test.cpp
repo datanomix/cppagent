@@ -678,6 +678,58 @@ TEST_F(HttpServerTest, additional_header_fields)
   ASSERT_EQ("https://foo.example", f2->second);
 }
 
+TEST_F(HttpServerTest, listen_throws_when_port_is_already_bound)
+{
+  // The fixture's server binds a random free port; capture the concrete port.
+  start();
+  auto port = m_server->getPort();
+
+  // A second server bound to the same concrete ip:port must fail to bind.
+  // SO_REUSEADDR is set, but two sockets concurrently listening on the same
+  // 127.0.0.1:port still yield EADDRINUSE on Linux, so this is deterministic.
+  //
+  // We call listen() directly rather than start(): start() catches the throw
+  // and calls std::exit(1), which would terminate the test runner.
+  asio::io_context otherContext;
+  Server other(otherContext,
+               ConfigOptions {{configuration::Port, static_cast<int>(port)},
+                              {configuration::ServerIp, "127.0.0.1"s}});
+  ASSERT_THROW(other.listen(), std::runtime_error);
+}
+
+TEST_F(HttpServerTest, accept_loop_rearms_after_recoverable_error)
+{
+  // Fix #1: on a recoverable accept error the accept loop must re-arm after a
+  // backoff instead of stopping permanently. getAcceptRearmCount() is a
+  // production seam that counts ONLY the error-recovery re-arm path, so a
+  // 0 -> 1 transition proves the fix actually re-armed the acceptor after the
+  // injected error (rather than the initial accept armed by start() simply
+  // serving a later connection, which would not distinguish fixed from broken).
+  //
+  // Injecting the error while the initial accept is still armed leaves two
+  // outstanding async_accept operations on the acceptor briefly. This is a
+  // supported Boost.Asio pattern (an acceptor may hold multiple concurrent
+  // pending accepts); both are cancelled cleanly (operation_aborted) when the
+  // server is destroyed in TearDown.
+  start();
+  ASSERT_EQ(0u, m_server->getAcceptRearmCount());
+
+  // Drive the recoverable-error branch directly with a fresh (unopened) socket;
+  // the error branch returns before touching the socket.
+  m_server->accept(boost::asio::error::connection_aborted, tcp::socket(m_context));
+
+  // Pump the io_context until the 100ms backoff timer fires and re-arms, with a
+  // bounded loop so a regression (no re-arm) fails fast instead of hanging.
+  for (int i = 0; i < 100 && m_server->getAcceptRearmCount() == 0; ++i)
+    m_context.run_for(20ms);
+
+  EXPECT_EQ(1u, m_server->getAcceptRearmCount());
+
+  // The server remains running and listening after recovering from the error.
+  EXPECT_TRUE(m_server->isRunning());
+  EXPECT_TRUE(m_server->isListening());
+}
+
 const string CertFile(TEST_RESOURCE_DIR "/user.crt");
 const string KeyFile {TEST_RESOURCE_DIR "/user.key"};
 const string DhFile {TEST_RESOURCE_DIR "/dh2048.pem"};

@@ -289,6 +289,7 @@ add_agent_test(globals FALSE core)
 
 add_agent_test(config_parser FALSE configuration)
 add_agent_test(config FALSE configuration)
+add_agent_test(async_context FALSE configuration)
 
 add_agent_test(change_observer FALSE observation)
 add_agent_test(observation TRUE observation)

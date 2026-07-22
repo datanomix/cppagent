@@ -71,7 +71,24 @@ namespace mtconnect::configuration {
       {
         for (int i = 0; i < m_threadCount; i++)
         {
-          m_workers.emplace_back(boost::thread([this]() { m_context.run(); }));
+          m_workers.emplace_back(boost::thread([this]() {
+            while (m_running)
+            {
+              try
+              {
+                m_context.run();
+                break;  // clean return: context stopped or out of work
+              }
+              catch (const std::exception &e)
+              {
+                LOG(error) << "Unhandled exception in io_context worker, resuming: " << e.what();
+              }
+              catch (...)
+              {
+                LOG(error) << "Unhandled unknown exception in io_context worker, resuming";
+              }
+            }
+          }));
         }
         auto &first = m_workers.front();
         while (m_running && !m_paused)
