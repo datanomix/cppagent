@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,12 @@
 
 #include <nlohmann/json.hpp>
 
-constexpr inline nlohmann::json::size_type operator"" _S(unsigned long long v)
+constexpr inline nlohmann::json::size_type operator""_S(unsigned long long v)
 {
   return static_cast<nlohmann::json::size_type>(v);
 }
 
-inline std::string operator"" _S(const char *v, std::size_t) { return std::string(v); }
+inline std::string operator""_S(const char *v, std::size_t) { return std::string(v); }
 
 static inline nlohmann::json find(nlohmann::json &array, const char *path, const char *value)
 {

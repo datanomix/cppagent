@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -112,10 +112,11 @@ public:
 class ConnectorTest : public testing::Test
 {
 protected:
+  ConnectorTest() : m_strand(m_context) {}
+
   void SetUp() override
   {
-    boost::asio::io_context::strand strand(m_context);
-    m_connector = std::make_unique<TestConnector>(strand, "127.0.0.1", m_port);
+    m_connector = std::make_unique<TestConnector>(m_strand, "127.0.0.1", m_port);
     m_connector->m_disconnected = true;
     m_connected = false;
   }
@@ -204,6 +205,7 @@ protected:
   unsigned short m_port {0};
   boost::asio::io_context m_context;
 
+  boost::asio::io_context::strand m_strand;
   std::unique_ptr<asio::ip::tcp::socket> m_server;
   std::unique_ptr<tcp::acceptor> m_acceptor;
   bool m_connected;
@@ -281,7 +283,7 @@ TEST_F(ConnectorTest, should_process_a_protocol_command)
   ASSERT_EQ("* Hello Connector", m_connector->m_command);
 }
 
-TEST_F(ConnectorTest, Heartbeat)
+TEST_F(ConnectorTest, heartbeat_is_enabled_after_valid_pong_received)
 {
   // Start the accept thread
   startServer();
@@ -301,7 +303,7 @@ TEST_F(ConnectorTest, Heartbeat)
   ASSERT_EQ(std::chrono::milliseconds {1000}, m_connector->heartbeatFrequency());
 }
 
-TEST_F(ConnectorTest, HeartbeatPong)
+TEST_F(ConnectorTest, heartbeat_pong_response_keeps_connection_alive)
 {
   // TODO Copy&Paste from Heartbeat
   // Start the accept thread
@@ -337,7 +339,7 @@ TEST_F(ConnectorTest, HeartbeatPong)
   }
 }
 
-TEST_F(ConnectorTest, HeartbeatDataKeepAlive)
+TEST_F(ConnectorTest, data_response_keeps_connection_alive_during_heartbeat)
 {
   startServer();
 
@@ -371,7 +373,7 @@ TEST_F(ConnectorTest, HeartbeatDataKeepAlive)
   }
 }
 
-TEST_F(ConnectorTest, HeartbeatTimeout)
+TEST_F(ConnectorTest, connection_is_disconnected_when_heartbeat_times_out)
 {
   startServer();
 
@@ -394,7 +396,7 @@ TEST_F(ConnectorTest, HeartbeatTimeout)
   ASSERT_TRUE(m_connector->m_disconnected);
 }
 
-TEST_F(ConnectorTest, LegacyTimeout)
+TEST_F(ConnectorTest, connection_is_disconnected_when_legacy_timeout_expires)
 {
   startServer();
 
@@ -414,7 +416,7 @@ TEST_F(ConnectorTest, LegacyTimeout)
   ASSERT_TRUE(m_connector->m_disconnected);
 }
 
-TEST_F(ConnectorTest, ParseBuffer)
+TEST_F(ConnectorTest, fragmented_data_is_assembled_into_complete_lines)
 {
   startServer();
 
@@ -445,7 +447,7 @@ TEST_F(ConnectorTest, ParseBuffer)
   ASSERT_EQ((string) "And Again", m_connector->m_data);
 }
 
-TEST_F(ConnectorTest, ParseBufferFraming)
+TEST_F(ConnectorTest, multiple_lines_are_correctly_framed_from_stream)
 {
   startServer();
 
@@ -464,7 +466,7 @@ TEST_F(ConnectorTest, ParseBufferFraming)
   ASSERT_EQ((string) "fourth", m_connector->m_list[3]);
 }
 
-TEST_F(ConnectorTest, SendCommand)
+TEST_F(ConnectorTest, command_is_sent_with_star_prefix_to_server)
 {
   startServer();
 
@@ -481,7 +483,7 @@ TEST_F(ConnectorTest, SendCommand)
   ASSERT_EQ("* Hello There;", line);
 }
 
-TEST_F(ConnectorTest, IPV6Connection)
+TEST_F(ConnectorTest, connector_connects_via_ipv6_address)
 {
 // TODO: Need to port to Windows > VISTA
 #if !defined(WIN32) && !defined(AGENT_WITHOUT_IPV6)
@@ -543,7 +545,7 @@ TEST_F(ConnectorTest, should_start_heartbeats_when_a_valid_pong_is_received)
   ASSERT_EQ(std::chrono::milliseconds {323}, m_connector->heartbeatFrequency());
 }
 
-TEST_F(ConnectorTest, test_trimming_trailing_white_space)
+TEST_F(ConnectorTest, trailing_whitespace_is_trimmed_from_received_lines)
 {
   startServer();
 

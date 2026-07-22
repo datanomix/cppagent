@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,7 +74,7 @@ protected:
   ComponentPtr m_component;
 };
 
-TEST_F(ReferencesTest, References)
+TEST_F(ReferencesTest, component_data_item_references_are_parsed_with_name_and_id_ref)
 {
   createAgent({});
   m_component = m_device->getComponentById("bf");

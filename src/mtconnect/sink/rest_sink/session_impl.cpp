@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -197,10 +197,11 @@ namespace mtconnect::sink::rest_sink {
     }
 
     auto &msg = m_parser->get();
-    const auto &remote = beast::get_lowest_layer(derived().stream()).socket().remote_endpoint();
+    const auto &remote = m_remote;
 
-    // Check for put, post, or delete
-    if (msg.method() != http::verb::get)
+    // Check for put, post, or delete (allow OPTIONS for CORS preflight)
+    if (msg.method() == http::verb::put || msg.method() == http::verb::post ||
+        msg.method() == http::verb::delete_)
     {
       if (!m_allowPuts)
       {
@@ -238,11 +239,17 @@ namespace mtconnect::sink::rest_sink {
     }
 
     m_request->m_foreignIp = remote.address().to_string();
+    if (auto a = msg.find(http::field::forwarded); a != msg.end())
+      m_request->m_foreignHost = string(a->value());
+    else if (auto a = msg.find(http::field::host); a != msg.end())
+      m_request->m_foreignHost = string(a->value());
+    else
+      m_request->m_foreignHost = m_request->m_foreignIp;
     m_request->m_foreignPort = remote.port();
     if (auto a = msg.find(http::field::connection); a != msg.end())
       m_close = a->value() == "close";
 
-    LOG(info) << "ReST Request: From [" << m_request->m_foreignIp << ':' << remote.port()
+    LOG(info) << "ReST Request: From [" << m_request->m_foreignHost << ':' << remote.port()
               << "]: " << msg.method() << " " << msg.target();
 
     // Check if this is a websocket upgrade request. If so, begin a websocket session.
@@ -302,10 +309,14 @@ namespace mtconnect::sink::rest_sink {
     m_mimeType = mimeType;
     m_streaming = true;
 
+    auto now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+    std::string date = std::format("{:%a, %d %b %Y %T} GMT", now);
+
     auto res = make_shared<http::response<empty_body>>(status::ok, 11);
     m_response = res;
     res->chunked(true);
     res->set(field::server, "MTConnectAgent");
+    res->set(field::date, date);
     res->set(field::connection, "close");
     res->set(field::content_type, "multipart/mixed;boundary=" + m_boundary);
     res->set(field::expires, "-1");
@@ -360,6 +371,10 @@ namespace mtconnect::sink::rest_sink {
   void SessionImpl<Derived>::addHeaders(const Response &response, Message &res)
   {
     res->set(http::field::server, "MTConnectAgent");
+    auto now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+    std::string date = std::format("{:%a, %d %b %Y %T} GMT", now);
+    res->set(http::field::date, date);
+
     if (response.m_close || m_close)
       res->set(http::field::connection, "close");
     if (response.m_expires == 0s)
@@ -375,6 +390,10 @@ namespace mtconnect::sink::rest_sink {
     if (response.m_location)
     {
       res->set(http::field::location, *response.m_location);
+    }
+    for (const auto &f : response.m_fields)
+    {
+      res->set(f.first, f.second);
     }
   }
 
@@ -495,7 +514,13 @@ namespace mtconnect::sink::rest_sink {
       : SessionImpl<HttpsSession>(std::move(buffer), list, dispatch, error),
         m_stream(std::move(socket), context)
     {
-      m_remote = beast::get_lowest_layer(m_stream).socket().remote_endpoint();
+      NAMED_SCOPE("HttpsSession::HttpsSession");
+      boost::system::error_code ec;
+      m_remote = beast::get_lowest_layer(m_stream).socket().remote_endpoint(ec);
+      if (ec)
+      {
+        LOG(error) << "Failed to get remote endpoint for https session: " << ec.message();
+      }
     }
     /// @brief get a shared pointer to the https session
     /// @return shared pointer

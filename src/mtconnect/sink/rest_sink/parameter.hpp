@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,6 +62,9 @@ namespace mtconnect::sink::rest_sink {
     /// @param t the parameter type. defaults to STRING
     /// @param p path or query portion of the URI
     Parameter(const std::string &n, ParameterType t = STRING, UrlPart p = PATH)
+      : m_name(n), m_type(t), m_part(p)
+    {}
+    Parameter(const std::string_view &n, ParameterType t = STRING, UrlPart p = PATH)
       : m_name(n), m_type(t), m_part(p)
     {}
     Parameter(const Parameter &o) = default;

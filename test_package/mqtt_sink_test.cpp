@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +40,7 @@ using namespace mtconnect::device_model::data_item;
 using namespace mtconnect::sink::mqtt_sink;
 using namespace mtconnect::asset;
 using namespace mtconnect::configuration;
+using namespace mtconnect::mqtt_client;
 
 // main
 int main(int argc, char *argv[])
@@ -198,7 +199,7 @@ TEST_F(MqttSinkTest, mqtt_sink_flat_formatt_check)
   ASSERT_TRUE(waitFor(10s, [&service]() { return service->isConnected(); }));
 }
 
-TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe)
+TEST_F(MqttSinkTest, mqtt_sink_publishes_probe_response)
 {
   ConfigOptions options;
   createServer(options);
@@ -214,7 +215,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe)
     EXPECT_EQ("MTConnect/Probe/000", topic);
 
     ErrorList list;
-    auto ptr = parser.parse(device_model::Device::getRoot(), payload, "2.0", list);
+    auto ptr = parser.parse(device_model::Device::getRoot(), payload, list);
     EXPECT_EQ(0, list.size());
     auto dev = dynamic_pointer_cast<device_model::Device>(ptr);
     EXPECT_TRUE(dev);
@@ -237,7 +238,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe)
   ASSERT_TRUE(waitFor(1s, [&gotDevice]() { return gotDevice; }));
 }
 
-TEST_F(MqttSinkTest, mqtt_sink_should_publish_Sample)
+TEST_F(MqttSinkTest, mqtt_sink_publishes_sample_on_data_change)
 {
   ConfigOptions options;
   createServer(options);
@@ -282,7 +283,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Sample)
   ASSERT_TRUE(waitFor(10s, [&gotSample]() { return gotSample; }));
 }
 
-TEST_F(MqttSinkTest, mqtt_sink_should_publish_Current)
+TEST_F(MqttSinkTest, mqtt_sink_publishes_current_on_connection)
 {
   ConfigOptions options;
   createServer(options);
@@ -319,7 +320,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Current)
   ASSERT_TRUE(waitFor(1s, [&gotCurrent]() { return gotCurrent; }));
 }
 
-TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe_with_uuid_first)
+TEST_F(MqttSinkTest, mqtt_sink_publishes_probe_with_uuid_first_in_topic)
 {
   ConfigOptions options;
   createServer(options);
@@ -335,7 +336,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe_with_uuid_first)
     EXPECT_EQ("MTConnect/000/Probe", topic);
 
     ErrorList list;
-    auto ptr = parser.parse(device_model::Device::getRoot(), payload, "2.0", list);
+    auto ptr = parser.parse(device_model::Device::getRoot(), payload, list);
     EXPECT_EQ(0, list.size());
     auto dev = dynamic_pointer_cast<device_model::Device>(ptr);
     EXPECT_TRUE(dev);
@@ -358,7 +359,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe_with_uuid_first)
   ASSERT_TRUE(waitFor(1s, [&gotDevice]() { return gotDevice; }));
 }
 
-TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe_no_device_in_format)
+TEST_F(MqttSinkTest, mqtt_sink_publishes_probe_without_device_in_topic)
 {
   ConfigOptions options;
   createServer(options);
@@ -374,7 +375,7 @@ TEST_F(MqttSinkTest, mqtt_sink_should_publish_Probe_no_device_in_format)
     EXPECT_EQ("MTConnect/Probe/000", topic);
 
     ErrorList list;
-    auto ptr = parser.parse(device_model::Device::getRoot(), payload, "2.0", list);
+    auto ptr = parser.parse(device_model::Device::getRoot(), payload, list);
     EXPECT_EQ(0, list.size());
     auto dev = dynamic_pointer_cast<device_model::Device>(ptr);
     EXPECT_TRUE(dev);

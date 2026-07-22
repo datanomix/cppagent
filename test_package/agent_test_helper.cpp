@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,7 +75,7 @@ void AgentTestHelper::putResponseHelper(const char *file, int line, const string
                                         const char *accepts)
 {
   makeRequest(file, line, http::verb::put, body, aQueries, path, accepts);
-  if (ends_with(m_session->m_mimeType, "xml"))
+  if (m_session->m_mimeType.ends_with("xml"sv))
     *doc = xmlParseMemory(m_session->m_body.c_str(), int32_t(m_session->m_body.size()));
 }
 
@@ -83,7 +83,7 @@ void AgentTestHelper::deleteResponseHelper(const char *file, int line, const Que
                                            xmlDocPtr *doc, const char *path, const char *accepts)
 {
   makeRequest(file, line, http::verb::delete_, "", aQueries, path, accepts);
-  if (ends_with(m_session->m_mimeType, "xml"))
+  if (m_session->m_mimeType.ends_with("xml"sv))
     *doc = xmlParseMemory(m_session->m_body.c_str(), int32_t(m_session->m_body.size()));
 }
 
@@ -97,4 +97,46 @@ void AgentTestHelper::responseHelper(const char *file, int line, const QueryMap 
 {
   makeRequest(file, line, http::verb::get, "", aQueries, path, accepts);
   doc = nlohmann::json::parse(m_session->m_body);
+}
+
+void AgentTestHelper::makeWebSocketRequest(const char *file, int line, const std::string &json,
+                                           xmlDocPtr *doc, std::string &id)
+{
+  m_dispatched = m_websocketSession->dispatch(json, id);
+  parseResponse(file, line, doc, id);
+}
+
+void AgentTestHelper::makeWebSocketRequest(const char *file, int line, const std::string &json,
+                                           nlohmann::json &doc, std::string &id)
+{
+  m_dispatched = m_websocketSession->dispatch(json, id);
+  parseResponse(file, line, doc, id);
+}
+
+void AgentTestHelper::makeAsyncWebSocketRequest(const char *file, int line, const std::string &json,
+                                                std::string &id)
+{
+  m_dispatched = m_websocketSession->dispatch(json, id);
+}
+
+void AgentTestHelper::parseResponse(const char *file, int line, xmlDocPtr *doc,
+                                    const std::string &id)
+{
+  auto response = m_websocketSession->getNextResponse(id);
+  ASSERT_TRUE(response) << "No response for id " << id;
+  if (response)
+  {
+    *doc = xmlParseMemory(response->c_str(), int32_t(response->size()));
+  }
+}
+
+void AgentTestHelper::parseResponse(const char *file, int line, nlohmann::json &doc,
+                                    const std::string &id)
+{
+  auto response = m_websocketSession->getNextResponse(id);
+  ASSERT_TRUE(response) << "No response for id " << id;
+  if (response)
+  {
+    doc = nlohmann::json::parse(*response);
+  }
 }

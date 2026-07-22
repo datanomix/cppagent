@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,6 @@
 using namespace std::chrono_literals;
 using namespace std;
 using namespace std::literals;
-using namespace date::literals;
 
 using WorkGuard = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
 
@@ -73,7 +72,7 @@ namespace mtconnect {
     std::optional<WorkGuard> m_guard;
   };
 
-  TEST_F(ChangeObserverTest, AddObserver)
+  TEST_F(ChangeObserverTest, observer_is_registered_with_signaler_after_add)
   {
     mtconnect::ChangeObserver changeObserver(*m_strand);
 
@@ -82,7 +81,7 @@ namespace mtconnect {
     ASSERT_TRUE(m_signaler->hasObserver(&changeObserver));
   }
 
-  TEST_F(ChangeObserverTest, SignalObserver)
+  TEST_F(ChangeObserverTest, observer_receives_signal_with_correct_sequence_number)
   {
     mtconnect::ChangeObserver changeObserver(*m_strand);
 
@@ -140,7 +139,7 @@ namespace mtconnect {
     ASSERT_FALSE(changeObserver.wasSignaled());
   }
 
-  TEST_F(ChangeObserverTest, Cleanup)
+  TEST_F(ChangeObserverTest, observer_is_removed_from_signaler_when_destroyed)
   {
     mtconnect::ChangeObserver *changeObserver = nullptr;
 
@@ -154,7 +153,7 @@ namespace mtconnect {
     ASSERT_FALSE(m_signaler->hasObserver(changeObserver));
   }
 
-  TEST_F(ChangeObserverTest, ChangeSequence)
+  TEST_F(ChangeObserverTest, observer_captures_lowest_sequence_when_signaled_multiple_times)
   {
     mtconnect::ChangeObserver changeObserver(*m_strand);
 
@@ -184,7 +183,7 @@ namespace mtconnect {
     ASSERT_EQ(uint64_t {100}, changeObserver.getSequence());
   }
 
-  TEST_F(ChangeObserverTest, ChangeSequence2)
+  TEST_F(ChangeObserverTest, observer_tracks_minimum_sequence_across_out_of_order_signals)
   {
     using namespace std::chrono_literals;
     mtconnect::ChangeObserver changeObserver(*m_strand);

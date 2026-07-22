@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,7 +63,7 @@ protected:
   std::unique_ptr<AgentTestHelper> m_agentTestHelper;
 };
 
-TEST_F(SensorConfigurationTest, ParseSensorConfiguration)
+TEST_F(SensorConfigurationTest, sensor_configuration_channels_are_parsed_with_name)
 {
   ASSERT_NE(nullptr, m_device);
 

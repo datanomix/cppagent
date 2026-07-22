@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,19 +123,19 @@ protected:
   std::list<DevicePtr> m_devices;
 };
 
-Properties operator"" _value(unsigned long long value)
+Properties operator""_value(unsigned long long value)
 {
   return Properties {{"VALUE", int64_t(value)}};
 }
 
-Properties operator"" _value(long double value) { return Properties {{"VALUE", double(value)}}; }
+Properties operator""_value(long double value) { return Properties {{"VALUE", double(value)}}; }
 
-Properties operator"" _value(const char *value, size_t s)
+Properties operator""_value(const char *value, size_t s)
 {
   return Properties {{"VALUE", string(value)}};
 }
 
-TEST_F(JsonPrinterStreamTest, StreamHeader)
+TEST_F(JsonPrinterStreamTest, stream_header_contains_instance_id_buffer_size_and_sequence_numbers)
 {
   Checkpoint checkpoint;
   ObservationList list;
@@ -156,7 +156,7 @@ TEST_F(JsonPrinterStreamTest, StreamHeader)
   ASSERT_EQ("MachineXXX", jdoc.at("/MTConnectStreams/Header/sender"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, DeviceStream)
+TEST_F(JsonPrinterStreamTest, device_stream_contains_name_and_uuid_for_device)
 {
   Checkpoint checkpoint;
   addObservationToCheckpoint(checkpoint, "Xpos", 10254804, 100_value);
@@ -201,7 +201,7 @@ TEST_F(JsonPrinterStreamTest, should_use_object_for_empty_version_2_stream)
   ASSERT_EQ(0, stream.size());
 }
 
-TEST_F(JsonPrinterStreamTest, DeviceStream_version_2_one_device)
+TEST_F(JsonPrinterStreamTest, device_stream_version_2_one_device_contains_name_and_uuid)
 {
   m_printer = std::make_unique<printer::JsonPrinter>(2, true);
 
@@ -220,7 +220,7 @@ TEST_F(JsonPrinterStreamTest, DeviceStream_version_2_one_device)
             stream.at("/uuid"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, DeviceStream_version_2_two_devices)
+TEST_F(JsonPrinterStreamTest, device_stream_version_2_two_devices_are_separated)
 {
   m_printer = std::make_unique<printer::JsonPrinter>(2, true);
   m_devices = m_config->parseFile(TEST_RESOURCE_DIR "/samples/min_config2.xml", m_xmlPrinter.get());
@@ -246,7 +246,7 @@ TEST_F(JsonPrinterStreamTest, DeviceStream_version_2_two_devices)
   ASSERT_EQ(string("001"), stream2.at("/uuid"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, ComponentStream)
+TEST_F(JsonPrinterStreamTest, component_stream_contains_component_type_name_and_id)
 {
   Checkpoint checkpoint;
   addObservationToCheckpoint(checkpoint, "Xpos", 10254804, 100_value);
@@ -264,7 +264,7 @@ TEST_F(JsonPrinterStreamTest, ComponentStream)
   ASSERT_EQ(string("e373fec0"), stream.at("/componentId"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, ComponentStreamTwoComponents)
+TEST_F(JsonPrinterStreamTest, component_stream_with_two_components_produces_separate_streams)
 {
   Checkpoint checkpoint;
   addObservationToCheckpoint(checkpoint, "Xpos", 10254804, 100_value);
@@ -314,7 +314,7 @@ TEST_F(JsonPrinterStreamTest, two_components_version_2)
   ASSERT_EQ(string("zf476090"), stream2.at("/componentId"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, TwoDevices)
+TEST_F(JsonPrinterStreamTest, two_devices_produce_separate_device_streams)
 {
   Checkpoint checkpoint;
   addObservationToCheckpoint(checkpoint, "Xpos", 10254804, 100_value);
@@ -340,7 +340,7 @@ TEST_F(JsonPrinterStreamTest, TwoDevices)
             stream2.at("/uuid"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, SampleAndEventDataItem)
+TEST_F(JsonPrinterStreamTest, sample_and_event_data_items_are_serialized_with_properties_in_stream)
 {
   mtconnect::buffer::Checkpoint checkpoint;
   Timestamp now = chrono::system_clock::now();
@@ -442,7 +442,7 @@ TEST_F(JsonPrinterStreamTest, samples_and_events_version_2)
   ASSERT_EQ(32.0, positions.at("/2/value/2"_json_pointer).get<double>());
 }
 
-TEST_F(JsonPrinterStreamTest, ConditionDataItem)
+TEST_F(JsonPrinterStreamTest, condition_data_item_is_serialized_with_level_and_codes_in_stream)
 {
   Timestamp now = chrono::system_clock::now();
   auto time = format(now);
@@ -483,7 +483,7 @@ TEST_F(JsonPrinterStreamTest, ConditionDataItem)
   ASSERT_EQ(string("Syntax error"), motion.at("/Fault/value"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, TimeSeries)
+TEST_F(JsonPrinterStreamTest, time_series_observation_is_serialized_with_sample_count_and_values)
 {
   Timestamp now = chrono::system_clock::now();
   auto time = format(now);
@@ -538,7 +538,7 @@ TEST_F(JsonPrinterStreamTest, TimeSeries)
   ASSERT_NEAR(10.2, value[9].get<double>(), 0.0001);
 }
 
-TEST_F(JsonPrinterStreamTest, AssetChanged)
+TEST_F(JsonPrinterStreamTest, asset_changed_and_asset_removed_observations_are_included_in_stream)
 {
   Timestamp now = chrono::system_clock::now();
   auto time = format(now);
@@ -585,7 +585,7 @@ TEST_F(JsonPrinterStreamTest, AssetChanged)
   ASSERT_EQ(string("400477d0-33c7"), removed.at("/AssetRemoved/value"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, ResetTrigger)
+TEST_F(JsonPrinterStreamTest, reset_trigger_is_included_in_observation_with_statistic_and_duration)
 {
   Timestamp now = chrono::system_clock::now();
   auto time = format(now);
@@ -623,7 +623,7 @@ TEST_F(JsonPrinterStreamTest, ResetTrigger)
   ASSERT_EQ(10.0, amp.at("/Amperage/value"_json_pointer).get<double>());
 }
 
-TEST_F(JsonPrinterStreamTest, Message)
+TEST_F(JsonPrinterStreamTest, message_observation_is_serialized_with_native_code_and_value)
 {
   Timestamp now = chrono::system_clock::now();
   auto time = format(now);
@@ -658,7 +658,8 @@ TEST_F(JsonPrinterStreamTest, Message)
   ASSERT_EQ(string("XXX is on the roof"), message.at("/Message/value"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterStreamTest, Unavailability)
+TEST_F(JsonPrinterStreamTest,
+       unavailable_observations_are_serialized_for_events_samples_and_conditions)
 {
   Checkpoint checkpoint;
   addObservationToCheckpoint(checkpoint, "m17f1750", 10254804,
@@ -712,4 +713,81 @@ TEST_F(JsonPrinterStreamTest, Unavailability)
   auto position = samples.at(0);
   ASSERT_TRUE(position.is_object());
   ASSERT_EQ(string("UNAVAILABLE"), position.at("/Position/value"_json_pointer).get<string>());
+}
+
+TEST_F(JsonPrinterStreamTest, should_have_device_model_change_time_in_header)
+{
+  m_xmlPrinter = std::make_unique<printer::XmlPrinter>("2.7");
+  m_printer = std::make_unique<printer::JsonPrinter>(2, true);
+  m_printer->setModelChangeTime("2026-01-01T00:00:00Z");
+
+  ObservationList list;
+  auto doc = m_printer->printSample(123, 131072, 10254805, 10123733, 10123800, list);
+
+  auto jdoc = json::parse(doc);
+
+  auto header = jdoc.at("/MTConnectStreams/Header"_json_pointer);
+  ASSERT_EQ(string("2026-01-01T00:00:00Z"),
+            header.at("/deviceModelChangeTime"_json_pointer).get<string>());
+}
+
+TEST_F(JsonPrinterStreamTest, event_with_count_or_number_types)
+{
+  m_printer = std::make_unique<printer::JsonPrinter>(2, true);
+  m_printer->setStreamsSchema("/scheams/MTConnectStreams-2.7.schema.json");
+
+  ObservationList list;
+  Timestamp now = chrono::system_clock::now();
+
+  addObservationToList(list, "d2e9e4a0", 10254805, Properties {{"VALUE", "10"}},
+                       now);  // Part Count
+  addObservationToList(list, "bbafe675", 10254806, Properties {{"VALUE", "11"}},
+                       now);  // Line Number
+  addObservationToList(list, "bbafe670", 10254807, Properties {{"VALUE", "12"}},
+                       now);  // Line
+  addObservationToList(list, "a01c7f35", 10254807, Properties {{"VALUE", "13.5"}},
+                       now);  // PathFeedrateOverride
+  auto doc = m_printer->printSample(123, 131072, 10254805, 10123733, 10123800, list);
+  auto jdoc = json::parse(doc);
+
+  auto stream = jdoc.at("/MTConnectStreams/Streams/DeviceStream/0/ComponentStream/0"_json_pointer);
+  ASSERT_TRUE(stream.is_object());
+
+  ASSERT_EQ(string("a4a7bdf0"), stream.at("/componentId"_json_pointer).get<string>());
+
+  auto partCount = stream.at("/Events/PartCount/0"_json_pointer);
+  ASSERT_TRUE(partCount.is_object());
+
+  ASSERT_EQ(10, partCount.at("/value"_json_pointer).get<int64_t>());
+  ASSERT_EQ(string("d2e9e4a0"), partCount.at("/dataItemId"_json_pointer).get<string>());
+
+  auto lineNumber = stream.at("/Events/LineNumber/0"_json_pointer);
+  ASSERT_TRUE(lineNumber.is_object());
+
+  ASSERT_EQ(11, lineNumber.at("/value"_json_pointer).get<int64_t>());
+  ASSERT_EQ(string("bbafe675"), lineNumber.at("/dataItemId"_json_pointer).get<string>());
+
+  auto line = stream.at("/Events/Line/0"_json_pointer);
+  ASSERT_TRUE(line.is_object());
+
+  ASSERT_EQ("12"s, line.at("/value"_json_pointer).get<string>());
+  ASSERT_EQ(string("bbafe670"), line.at("/dataItemId"_json_pointer).get<string>());
+
+  auto pathFeedrateOverride = stream.at("/Events/PathFeedrateOverride/0"_json_pointer);
+  ASSERT_TRUE(pathFeedrateOverride.is_object());
+
+  ASSERT_EQ(13.5, pathFeedrateOverride.at("/value"_json_pointer).get<double>());
+  ASSERT_EQ(string("a01c7f35"), pathFeedrateOverride.at("/dataItemId"_json_pointer).get<string>());
+}
+
+TEST_F(JsonPrinterStreamTest, streams_schema_url_is_set_in_document_when_configured)
+{
+  m_printer->setStreamsSchema("https://example.org/MTConnectStreams_2.0.schema.json");
+  Checkpoint checkpoint;
+  ObservationList list;
+  checkpoint.getObservations(list);
+  auto doc = m_printer->printSample(123, 131072, 1, 1, 1, list);
+  auto jdoc = json::parse(doc);
+  ASSERT_EQ("https://example.org/MTConnectStreams_2.0.schema.json",
+            jdoc.at("/$schema"_json_pointer).get<string>());
 }

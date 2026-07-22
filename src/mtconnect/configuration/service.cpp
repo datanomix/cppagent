@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,9 +46,11 @@ namespace mtconnect {
     {
       printf(
 #ifndef _WINDOWS
-          "Usage: agent [help|daemonize|debug|run] [config-file]"
+          R"(Usage: agent [help|daemonize|debug|run] [config-file]
+)"
 #else
-          "Usage: agent [help|install|remove|debug|run] [config-file]"
+          R"(Usage: agent [help|install|remove|debug|run] [config-file]
+)"
 #endif
           R"(       help           Prints this message and exits
        version        Prints the agent version and exits
@@ -59,8 +61,7 @@ namespace mtconnect {
 )"
 #else
           R"(       install        Install the agent as a service.
-       remove            Removes the agent service.
-
+       remove         Removes the agent service.
 )"
 #endif
           R"(       debug          Runs the agent on the command line with verbose logging
@@ -176,6 +177,8 @@ namespace mtconnect {
 
       using namespace std;
 
+      int res = 0;
+
       try
       {
         // If command-line parameter is "install", install the service. If debug or run
@@ -208,9 +211,9 @@ namespace mtconnect {
               m_isDebug = true;
 
             initialize(options);
-            start();
+            res = start();
             std::thread cmd(commandLine);
-            return 0;
+            return res;
           }
           else
           {
@@ -220,7 +223,7 @@ namespace mtconnect {
 
         g_service = this;
         m_isService = true;
-        SERVICE_TABLE_ENTRY DispatchTable[] = {{"", (LPSERVICE_MAIN_FUNCTION)SvcMain},
+        SERVICE_TABLE_ENTRY DispatchTable[] = {{LPSTR(""), (LPSERVICE_MAIN_FUNCTION)SvcMain},
                                                {nullptr, nullptr}};
 
         if (StartServiceCtrlDispatcher(DispatchTable) == 0)
@@ -229,21 +232,23 @@ namespace mtconnect {
         }
         else
         {
-          SvcReportEvent("StartServiceCtrlDispatcher");
+          SvcReportEvent(LPSTR("StartServiceCtrlDispatcher"));
         }
       }
       catch (std::exception &e)
       {
         LOG(fatal) << "Agent top level exception: " << e.what();
         std::cerr << "Agent top level exception: " << e.what() << std::endl;
+        res = 1;
       }
       catch (std::string &s)
       {
         LOG(fatal) << "Agent top level exception: " << s;
         std::cerr << "Agent top level exception: " << s << std::endl;
+        res = 1;
       }
 
-      return 0;
+      return res;
     }
 
     bool MTConnectService::isElevated()
@@ -516,7 +521,7 @@ namespace mtconnect {
 
       if (!g_svcStatusHandle)
       {
-        SvcReportEvent("RegisterServiceCtrlHandler");
+        SvcReportEvent(LPSTR("RegisterServiceCtrlHandler"));
         return;
       }
 
@@ -554,7 +559,7 @@ namespace mtconnect {
       auto res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0ul, KEY_READ, &agent);
       if (res != ERROR_SUCCESS)
       {
-        SvcReportEvent("RegOpenKey: Could not open MTConnect Agent Key");
+        SvcReportEvent(LPSTR("RegOpenKey: Could not open MTConnect Agent Key"));
         ReportSvcStatus(SERVICE_STOPPED, 1ul, 0ul);
         return;
       }
@@ -566,7 +571,7 @@ namespace mtconnect {
       agent = nullptr;
       if (res != ERROR_SUCCESS)
       {
-        SvcReportEvent("RegOpenKey: Could not open ConfigurationFile");
+        SvcReportEvent(LPSTR("RegOpenKey: Could not open ConfigurationFile"));
         ReportSvcStatus(SERVICE_STOPPED, 1ul, 0ul);
         return;
       }
@@ -841,8 +846,7 @@ namespace mtconnect {
         usage(1);
       }
 
-      start();
-      return 0;
+      return start();
     }
 
     void MTConnectService::install() {}

@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT � The Association For Manufacturing Technology (�AMT�)
+// Copyright Copyright 2009-2026, AMT � The Association For Manufacturing Technology (�AMT�)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,8 +46,7 @@ namespace mtconnect {
       /// @param version the version to parse
       /// @param errors Errors that occurred creating the entities
       /// @return an entity shared pointer if successful
-      EntityPtr parse(FactoryPtr factory, const std::string &document, const std::string &version,
-                      ErrorList &errors);
+      EntityPtr parse(FactoryPtr factory, const std::string &document, ErrorList &errors);
 
     protected:
       uint32_t m_version;

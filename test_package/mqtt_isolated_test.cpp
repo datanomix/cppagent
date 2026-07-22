@@ -1,5 +1,5 @@
 
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 
 //   Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,6 +38,7 @@ using namespace mtconnect::configuration;
 using namespace mtconnect::device_model::data_item;
 using namespace mtconnect::sink::mqtt_sink;
 using namespace mtconnect::sink::rest_sink;
+using namespace mtconnect::mqtt_client;
 
 using json = nlohmann::json;
 
@@ -115,7 +116,7 @@ protected:
   bool waitFor(const chrono::duration<Rep, Period> &time, function<bool()> pred)
   {
     boost::asio::steady_timer timer(m_agentTestHelper->m_ioContext);
-    timer.expires_from_now(time);
+    timer.expires_after(time);
     bool timeout = false;
     timer.async_wait([&timeout](boost::system::error_code ec) {
       if (!ec)
@@ -363,7 +364,7 @@ TEST_F(MqttIsolatedUnitTest, should_connect_using_tls_ws)
   ASSERT_TRUE(m_client->isConnected());
 }
 
-TEST_F(MqttIsolatedUnitTest, should_conenct_using_tls_authentication)
+TEST_F(MqttIsolatedUnitTest, should_connect_using_tls_authentication)
 {
   GTEST_SKIP();
 
@@ -399,7 +400,7 @@ TEST_F(MqttIsolatedUnitTest, should_conenct_using_tls_authentication)
   ASSERT_TRUE(m_client->isConnected());
 }
 
-TEST_F(MqttIsolatedUnitTest, mqtt_tcp_client_authentication)
+TEST_F(MqttIsolatedUnitTest, mqtt_tcp_client_authenticates_with_credentials)
 {
   ConfigOptions options {{ServerIp, "127.0.0.1"s},
                          {MqttPort, 0},

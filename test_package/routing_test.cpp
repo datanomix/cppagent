@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,7 +55,7 @@ protected:
   const Routing::Function m_func {[](SessionPtr, const RequestPtr) { return true; }};
 };
 
-TEST_F(RoutingTest, TestSimplePattern)
+TEST_F(RoutingTest, matches_simple_path_and_verb_pattern)
 {
   RequestPtr request = make_shared<Request>();
   request->m_verb = verb::get;
@@ -82,7 +82,7 @@ TEST_F(RoutingTest, TestSimplePattern)
   ASSERT_EQ("ABC123", get<string>(request->m_parameters["device"]));
 }
 
-TEST_F(RoutingTest, TestComplexPatterns)
+TEST_F(RoutingTest, matches_complex_path_with_asset_parameter)
 {
   RequestPtr request = make_shared<Request>();
   request->m_verb = verb::get;
@@ -98,7 +98,7 @@ TEST_F(RoutingTest, TestComplexPatterns)
   ASSERT_FALSE(r.matches(0, request));
 }
 
-TEST_F(RoutingTest, TestCurrentAtQueryParameter)
+TEST_F(RoutingTest, parses_current_at_query_parameter)
 {
   Routing r(verb::get, "/{device}/current?at={unsigned_integer}", m_func);
   ASSERT_EQ(1, r.getPathParameters().size());
@@ -115,7 +115,7 @@ TEST_F(RoutingTest, TestCurrentAtQueryParameter)
   EXPECT_TRUE(holds_alternative<monostate>(qp.m_default));
 }
 
-TEST_F(RoutingTest, TestSampleQueryParameters)
+TEST_F(RoutingTest, parses_sample_query_parameters_with_defaults)
 {
   Routing r(verb::get,
             "/{device}/sample?from={unsigned_integer}&"
@@ -156,7 +156,7 @@ TEST_F(RoutingTest, TestSampleQueryParameters)
   EXPECT_TRUE(holds_alternative<monostate>(qp->m_default));
 }
 
-TEST_F(RoutingTest, TestQueryParameterMatch)
+TEST_F(RoutingTest, matches_request_with_query_parameters)
 {
   RequestPtr request = make_shared<Request>();
   request->m_verb = verb::get;
@@ -192,7 +192,7 @@ TEST_F(RoutingTest, TestQueryParameterMatch)
   ASSERT_EQ(request->m_parameters.end(), request->m_parameters.find("dummy"));
 }
 
-TEST_F(RoutingTest, TestQueryParameterError)
+TEST_F(RoutingTest, throws_rest_error_for_invalid_query_parameter_type)
 {
   Routing r(verb::get,
             "/{device}/sample?from={unsigned_integer}&"
@@ -303,4 +303,60 @@ TEST_F(RoutingTest, simple_put_with_trailing_slash)
   request->m_path = "/ADevice/";
   ASSERT_TRUE(r.matches(0, request));
   ASSERT_EQ("ADevice", get<string>(request->m_parameters["device"]));
+}
+
+TEST_F(RoutingTest, matchesPath_matches_simple_path)
+{
+  Routing r(verb::get, "/probe", m_func);
+
+  EXPECT_TRUE(r.matchesPath("/probe"));
+  EXPECT_TRUE(r.matchesPath("/probe/"));
+  EXPECT_FALSE(r.matchesPath("/sample"));
+  EXPECT_FALSE(r.matchesPath("/probe/extra"));
+}
+
+TEST_F(RoutingTest, matchesPath_matches_path_with_parameter)
+{
+  Routing r(verb::get, "/{device}/probe", m_func);
+
+  EXPECT_TRUE(r.matchesPath("/ABC123/probe"));
+  EXPECT_TRUE(r.matchesPath("/mydevice/probe"));
+  EXPECT_FALSE(r.matchesPath("/probe"));
+  EXPECT_FALSE(r.matchesPath("/dev/probe/extra"));
+}
+
+TEST_F(RoutingTest, matchesPath_ignores_verb)
+{
+  Routing getRoute(verb::get, "/asset/{id}", m_func);
+  Routing putRoute(verb::put, "/asset/{id}", m_func);
+  Routing deleteRoute(verb::delete_, "/asset/{id}", m_func);
+
+  // matchesPath should match regardless of the routing's verb
+  EXPECT_TRUE(getRoute.matchesPath("/asset/A1"));
+  EXPECT_TRUE(putRoute.matchesPath("/asset/A1"));
+  EXPECT_TRUE(deleteRoute.matchesPath("/asset/A1"));
+
+  // Different paths should not match
+  EXPECT_FALSE(getRoute.matchesPath("/probe"));
+  EXPECT_FALSE(putRoute.matchesPath("/probe"));
+  EXPECT_FALSE(deleteRoute.matchesPath("/probe"));
+}
+
+TEST_F(RoutingTest, matchesPath_works_with_regex_routing)
+{
+  Routing r(verb::get, regex("/.+"), m_func);
+
+  EXPECT_TRUE(r.matchesPath("/anything"));
+  EXPECT_TRUE(r.matchesPath("/some/deep/path"));
+  EXPECT_FALSE(r.matchesPath("/"));
+}
+
+TEST_F(RoutingTest, matchesPath_with_query_parameters_in_pattern)
+{
+  Routing r(verb::get, "/{device}/sample?from={unsigned_integer}&count={integer:100}", m_func);
+
+  // matchesPath only checks the path component, query params in the pattern don't affect it
+  EXPECT_TRUE(r.matchesPath("/ABC123/sample"));
+  EXPECT_TRUE(r.matchesPath("/device1/sample/"));
+  EXPECT_FALSE(r.matchesPath("/sample"));
 }

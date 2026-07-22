@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,6 +58,7 @@
 #include "mtconnect/configuration/config_options.hpp"
 #include "mtconnect/device_model/device.hpp"
 #include "mtconnect/printer/xml_printer.hpp"
+#include "mtconnect/sink/mqtt_entity_sink/mqtt_entity_sink.hpp"
 #include "mtconnect/sink/mqtt_sink/mqtt_service.hpp"
 #include "mtconnect/sink/rest_sink/rest_service.hpp"
 #include "mtconnect/source/adapter/agent_adapter/agent_adapter.hpp"
@@ -111,6 +112,7 @@ namespace mtconnect::configuration {
 
     sink::mqtt_sink::MqttService::registerFactory(m_sinkFactory);
     sink::rest_sink::RestService::registerFactory(m_sinkFactory);
+    sink::mqtt_entity_sink::MqttEntitySink::registerFactory(m_sinkFactory);
     adapter::shdr::ShdrAdapter::registerFactory(m_sourceFactory);
     adapter::mqtt_adapter::MqttAdapter::registerFactory(m_sourceFactory);
     adapter::agent_adapter::AgentAdapter::registerFactory(m_sourceFactory);
@@ -174,20 +176,21 @@ namespace mtconnect::configuration {
         cerr << "Loading configuration from:" << *path << endl;
 
         m_configFile = fs::canonical(*path);
-        addPathFront(m_configPaths, m_configFile.parent_path());
-        addPathBack(m_dataPaths, m_configFile.parent_path());
+        m_configPath = m_configFile.parent_path();
+        addPathFront(m_configPaths, m_configPath);
+        addPathBack(m_dataPaths, m_configPath);
 
         ifstream file(m_configFile.c_str());
         std::stringstream buffer;
         buffer << file.rdbuf();
 
         FileFormat fmt = MTCONNECT;
-        if (ends_with(m_configFile.string(), "json"))
+        if (m_configFile.string().ends_with("json"))
         {
           LOG(debug) << "Parsing json configuration";
           fmt = JSON;
         }
-        else if (ends_with(m_configFile.string(), "xml"))
+        else if (m_configFile.string().ends_with("xml"))
         {
           LOG(debug) << "Parsing xml configuration";
           fmt = XML;
@@ -366,7 +369,7 @@ namespace mtconnect::configuration {
 
             using std::placeholders::_1;
 
-            m_monitorTimer.expires_from_now(100ms);
+            m_monitorTimer.expires_after(100ms);
             m_monitorTimer.async_wait(boost::bind(&AgentConfiguration::monitorFiles, this, _1));
           }
           else
@@ -388,11 +391,11 @@ namespace mtconnect::configuration {
 
     using std::placeholders::_1;
 
-    m_monitorTimer.expires_from_now(m_monitorInterval);
+    m_monitorTimer.expires_after(m_monitorInterval);
     m_monitorTimer.async_wait(boost::bind(&AgentConfiguration::monitorFiles, this, _1));
   }
 
-  void AgentConfiguration::start()
+  int AgentConfiguration::start()
   {
     if (m_monitorFiles)
     {
@@ -411,7 +414,7 @@ namespace mtconnect::configuration {
     m_context->setThreadCount(m_workerThreadCount);
     m_beforeStartHooks.exec(*this);
     m_agent->start();
-    m_context->start();
+    return m_context->start();
   }
 
   void AgentConfiguration::stop()
@@ -519,15 +522,17 @@ namespace mtconnect::configuration {
     }
 
     ptree empty;
-    auto logger = config.get_child_optional("logger_config").value_or(empty);
+    auto logger = config.get_child_optional("logger_config")
+                      .value_or(config.get_child_optional("logging").value_or(empty));
 
     const string defaultFileName = channelName + ".log";
     const string defaultArchivePattern = channelName + "_%Y-%m-%d_%H-%M-%S_%N.log";
 
     ConfigOptions options;
     AddDefaultedOptions(logger, options,
-                        {{"max_size", "10mb"s},
-                         {"rotation_size", "2mb"s},
+                        {{"max_size", ""s},
+                         {"rotation_size", ""s},  // for backward compatibility
+                         {"max_archive_size", "10mb"s},
                          {"max_index", 9},
                          {"file_name", defaultFileName},
                          {"archive_pattern", defaultArchivePattern}});
@@ -591,15 +596,19 @@ namespace mtconnect::configuration {
       }
     }
 
-    auto &maxLogFileSize = logChannel.m_maxLogFileSize;
+    auto &maxLogArchiveSize = logChannel.m_maxLogArchiveSize;
     auto &logRotationSize = logChannel.m_logRotationSize;
     auto &rotationLogInterval = logChannel.m_rotationLogInterval;
     auto &logArchivePattern = logChannel.m_logArchivePattern;
     auto &logDirectory = logChannel.m_logDirectory;
+    auto &archiveLogDirectory = logChannel.m_archiveLogDirectory;
     auto &logFileName = logChannel.m_logFileName;
 
-    maxLogFileSize = ConvertFileSize(options, "max_size", maxLogFileSize);
+    logRotationSize = 2 * 1024 * 1024;  // Default to 2MB for log rotation size
+    maxLogArchiveSize = ConvertFileSize(options, "max_archive_size", maxLogArchiveSize);
     logRotationSize = ConvertFileSize(options, "rotation_size", logRotationSize);
+    logRotationSize = ConvertFileSize(options, "max_size", logRotationSize);
+
     int max_index = *GetOption<int>(options, "max_index");
 
     if (auto sched = GetOption<string>(options, "schedule"))
@@ -616,29 +625,51 @@ namespace mtconnect::configuration {
     auto file_name = *GetOption<string>(options, "file_name");
     auto archive_pattern = *GetOption<string>(options, "archive_pattern");
 
+    // Default the log directory to the configuration file path.
+    logDirectory = m_configPath;
+    logFileName = fs::path(file_name);
     logArchivePattern = fs::path(archive_pattern);
-    if (!logArchivePattern.has_filename())
+
+    // Determine the log directory based on the provided file name and archive pattern
+    if (logFileName.is_absolute())
+      logDirectory = logFileName.parent_path();
+    else if (logArchivePattern.is_absolute())
+      logDirectory = logArchivePattern.parent_path();
+
+    // If the log file name is relative and has a parent path, use it to determine the log directory
+    if (logFileName.is_relative() && logFileName.has_parent_path())
     {
-      logArchivePattern = logArchivePattern / archiveFileName(get<string>(options["file_name"]));
+      logDirectory = logDirectory / logFileName.parent_path();
+      logFileName = logFileName.filename();
+    }
+    else if (logArchivePattern.is_relative() && logArchivePattern.has_parent_path())
+    {
+      logDirectory = logDirectory / logArchivePattern.parent_path();
+      logArchivePattern = logArchivePattern.filename();
     }
 
+    // Make sure the log archive pattern includes a file name, use the default file name as the
+    // base.
+    if (!logArchivePattern.has_filename())
+      logArchivePattern = logArchivePattern / archiveFileName(get<string>(options["file_name"]));
+
+    // Make the logArchivePattern and logFileName absolute paths
+    logDirectory = logDirectory.lexically_normal();
+
     if (logArchivePattern.is_relative())
-      logArchivePattern = fs::current_path() / logArchivePattern;
+      logArchivePattern = logDirectory / logArchivePattern;
+    logArchivePattern = logArchivePattern.lexically_normal();
+    archiveLogDirectory = logArchivePattern.parent_path();
+    fs::create_directories(archiveLogDirectory);
 
-    // Get the log directory from the archive path.
-    logDirectory = logArchivePattern.parent_path();
-
-    // If the file name does not specify a log directory, use the
-    // archive directory
-    logFileName = fs::path(file_name);
-    if (!logFileName.has_parent_path())
+    if (logFileName.is_relative())
       logFileName = logDirectory / logFileName;
-    else if (logFileName.is_relative())
-      logFileName = fs::current_path() / logFileName;
+    logFileName = logFileName.lexically_normal();
+    fs::create_directories(logFileName.parent_path());
 
     // Create a text file sink
     auto sink = boost::make_shared<text_sink>(
-        kw::file_name = logFileName, kw::target_file_name = logArchivePattern.filename(),
+        kw::file_name = logFileName.string(), kw::target_file_name = logArchivePattern.string(),
         kw::auto_flush = true, kw::rotation_size = logRotationSize,
         kw::open_mode = ios_base::out | ios_base::app, kw::format = formatter);
 
@@ -647,7 +678,8 @@ namespace mtconnect::configuration {
 
     // Set up where the rotated files will be stored
     sink->locked_backend()->set_file_collector(logr::sinks::file::make_collector(
-        kw::target = logDirectory, kw::max_size = maxLogFileSize, kw::max_files = max_index));
+        kw::target = archiveLogDirectory.string(), kw::max_size = maxLogArchiveSize,
+        kw::max_files = max_index));
 
     if (rotationLogInterval > 0)
     {
@@ -769,12 +801,12 @@ namespace mtconnect::configuration {
     catch (boost::property_tree::json_parser::json_parser_error &e)
     {
       cerr << "json file error: " << e.what() << " on line " << e.line() << endl;
-      throw e;
+      throw;
     }
-    catch (std::exception e)
+    catch (const std::exception &e)
     {
       cerr << "could not load config file: " << e.what() << endl;
-      throw e;
+      throw;
     }
 
     if (m_logChannels.empty())
@@ -831,6 +863,7 @@ namespace mtconnect::configuration {
                 {configuration::SuppressIPAddress, false},
                 {configuration::AllowPutFrom, ""s},
                 {configuration::Validation, false},
+                {configuration::ExternalBaseUrl, ""s},
                 {configuration::CorrectTimestamps, false}});
 
     m_workerThreadCount = *GetOption<int>(options, configuration::WorkerThreads);
@@ -879,12 +912,12 @@ namespace mtconnect::configuration {
       LOG(fatal) << "Cannot find device configuration file";
       logPaths(LOG_LEVEL(fatal), m_configPaths);
 
-      throw runtime_error(((string) "Please make sure the configuration "
-                                    "file probe.xml or Devices.xml is in the current "
-                                    "directory or specify the correct file "
-                                    "in the configuration file " +
-                           m_configFile.string() + " using Devices = <file>")
-                              .c_str());
+      throw FatalException(((string) "Please make sure the configuration "
+                                     "file probe.xml or Devices.xml is in the current "
+                                     "directory or specify the correct file "
+                                     "in the configuration file " +
+                            m_configFile.string() + " using Devices = <file>")
+                               .c_str());
     }
 
     m_name = get<string>(options[configuration::ServiceName]);
@@ -899,13 +932,10 @@ namespace mtconnect::configuration {
     auto port = get<int>(options[configuration::Port]);
     LOG(info) << "Starting agent on port " << int(port);
 
-    // Get the name of the sender
+    // Get the ExternalBaseUrl for the agent
+    auto externalBaseUrl = GetOption<string>(options, configuration::ExternalBaseUrl);
     auto sender = GetOption<string>(options, configuration::Sender);
-    if (sender)
-    {
-      options[configuration::Sender] = *sender;
-    }
-    else
+    if (!sender && !externalBaseUrl)
     {
       boost::system::error_code ec;
       auto name = boost::asio::ip::host_name(ec);
@@ -913,6 +943,24 @@ namespace mtconnect::configuration {
         options[configuration::Sender] = "localhost";
       else
         options[configuration::Sender] = name;
+    }
+
+    if (externalBaseUrl)
+    {
+      auto url = url::Url::parse(*externalBaseUrl);
+      if (!sender)
+      {
+        sender = url.getHost();
+        options[configuration::Sender] = *sender;
+      }
+    }
+    else if (sender)
+    {
+      auto tls = GetOption<string>(options, configuration::TlsPrivateKey);
+      string protocol = tls ? "https" : "http";
+      stringstream url;
+      url << protocol << "://" << *sender << '/';
+      options[configuration::ExternalBaseUrl] = url.str();
     }
 
     // Make the Agent
@@ -938,6 +986,8 @@ namespace mtconnect::configuration {
 
     loadAdapters(config, options);
 
+    m_afterAgentHooks.exec(*this);
+
 #ifdef WITH_PYTHON
     configurePython(config, options);
 #endif
@@ -958,7 +1008,7 @@ namespace mtconnect::configuration {
     if (host.empty())
     {
       LOG(fatal) << "Malformed URL in configuration file: '" << url << "', exiting";
-      exit(1);
+      throw FatalException();
     }
     options[configuration::Host] = host;
 
@@ -1244,7 +1294,8 @@ namespace mtconnect::configuration {
       }
       catch (exception &e)
       {
-        LOG(info) << "Cannot load plugin " << name << " from " << path << " Reason: " << e.what();
+        LOG(debug) << "Plugin " << name << " from " << path << " not found, Reason: " << e.what()
+                   << ", trying next path if available.";
       }
     }
 

@@ -1,6 +1,6 @@
 
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,10 +28,10 @@
 #include "mtconnect/config.hpp"
 #include "mtconnect/pipeline/mtconnect_xml_transform.hpp"
 #include "mtconnect/pipeline/response_document.hpp"
+#include "mtconnect/utilities.hpp"
 #include "session.hpp"
 
 namespace mtconnect::source::adapter::agent_adapter {
-  using namespace std;
   namespace asio = boost::asio;
   namespace beast = boost::beast;
   namespace http = boost::beast::http;
@@ -78,7 +78,7 @@ namespace mtconnect::source::adapter::agent_adapter {
     {
       derived().lowestLayer().socket().close();
 
-      LOG(error) << "Agent Adapter Connection Failed: " << m_url.getUrlText(nullopt);
+      LOG(error) << "Agent Adapter Connection Failed: " << m_url.getUrlText(std::nullopt);
       if (m_request)
         LOG(error) << "Agent Adapter Target: " << m_request->getTarget(m_url);
       LOG(error) << "Agent Adapter " << what << ": " << ec.message() << "\n";
@@ -141,6 +141,10 @@ namespace mtconnect::source::adapter::agent_adapter {
         if (m_handler && m_handler->m_processData)
           m_handler->m_processData(data, m_identity);
       }
+      catch (FatalException &e)
+      {
+        throw e;
+      }
       catch (std::system_error &e)
       {
         LOG(warning) << "AgentAdapter - Error occurred processing data: " << e.what();
@@ -172,9 +176,9 @@ namespace mtconnect::source::adapter::agent_adapter {
         beast::error_code ec;
         onResolve(ec, *m_resolution);
       }
-      else if (holds_alternative<asio::ip::address>(m_url.m_host))
+      else if (std::holds_alternative<asio::ip::address>(m_url.m_host))
       {
-        asio::ip::tcp::endpoint ep(get<asio::ip::address>(m_url.m_host), m_url.getPort());
+        asio::ip::tcp::endpoint ep(std::get<asio::ip::address>(m_url.m_host), m_url.getPort());
 
         // Create the results type and call on resolve directly.
         using results_type = tcp::resolver::results_type;
@@ -189,7 +193,7 @@ namespace mtconnect::source::adapter::agent_adapter {
 
         // Do an async resolution of the address.
         m_resolver.async_resolve(
-            get<string>(m_url.m_host), m_url.getService(),
+            std::get<std::string>(m_url.m_host), m_url.getService(),
             asio::bind_executor(
                 m_strand, beast::bind_front_handler(&SessionImpl::onResolve, derived().getptr())));
       }
@@ -251,7 +255,7 @@ namespace mtconnect::source::adapter::agent_adapter {
 
       derived().lowestLayer().expires_after(m_timeout);
 
-      LOG(debug) << "Agent adapter making request: " << m_url.getUrlText(nullopt) << " target "
+      LOG(debug) << "Agent adapter making request: " << m_url.getUrlText(std::nullopt) << " target "
                  << m_request->getTarget(m_url);
 
       http::async_write(derived().stream(), *m_req,
@@ -306,8 +310,6 @@ namespace mtconnect::source::adapter::agent_adapter {
         {
           return failed(source::make_error_code(ErrorCode::RETRY_REQUEST), "header");
         }
-
-        return;
       }
 
       if (!m_request)
@@ -394,23 +396,28 @@ namespace mtconnect::source::adapter::agent_adapter {
 
     /// @brief Find the x-multipart-replace MIME boundary
     /// @return the boundary string
-    inline string findBoundary()
+    inline std::string findBoundary()
     {
       auto f = m_headerParser->get().find(http::field::content_type);
       if (f != m_headerParser->get().end())
       {
-        m_contentType = string(f->value());
+        m_contentType = std::string(f->value());
         auto i = m_contentType.find(';');
-        if (i != string::npos)
+        if (i != std::string::npos)
         {
           auto b = m_contentType.substr(i + 1);
           m_contentType = m_contentType.substr(0, i);
+          boost::algorithm::trim(m_contentType);
           auto p = b.find("=");
-          if (p != string::npos)
+          if (p != std::string::npos)
           {
-            if (b.substr(0, p) == "boundary")
+            auto key = b.substr(0, p);
+            auto value = b.substr(p + 1);
+            boost::algorithm::trim(key);
+            boost::algorithm::trim(value);
+            if (key == "boundary")
             {
-              return "--"s + b.substr(p + 1);
+              return "--" + value;
             }
           }
         }
@@ -426,12 +433,6 @@ namespace mtconnect::source::adapter::agent_adapter {
     {
       m_chunkHeaderHandler = [this](std::uint64_t size, boost::string_view extensions,
                                     boost::system::error_code &ec) {
-#if 0
-        http::chunk_extensions ce;
-        ce.parse(extensions, ec);
-        for (auto &c : ce)
-          cout << "Ext: " << c.first << ": " << c.second << endl;
-#endif
         derived().lowestLayer().expires_after(m_timeout);
 
         if (ec)
@@ -470,7 +471,7 @@ namespace mtconnect::source::adapter::agent_adapter {
       }
 
       auto ep = view.find("\r\n\r\n", bp);
-      if (bp == boost::string_view::npos)
+      if (ep == boost::string_view::npos)
       {
         LOG(warning) << "Cannot find the header separator";
         derived().lowestLayer().close();
@@ -519,7 +520,7 @@ namespace mtconnect::source::adapter::agent_adapter {
     void createChunkBodyHandler()
     {
       m_chunkHandler = [this](std::uint64_t remain, boost::string_view body,
-                              boost::system::error_code &ev) -> unsigned long {
+                              boost::system::error_code &ev) -> std::size_t {
         if (!m_request)
         {
           derived().lowestLayer().close();
@@ -549,11 +550,11 @@ namespace mtconnect::source::adapter::agent_adapter {
         if (len >= m_chunkLength)
         {
           auto start = static_cast<const char *>(m_chunk.data().data());
-          string_view sbuf(start, m_chunkLength);
+          boost::string_view sbuf(start, m_chunkLength);
 
           LOG(trace) << "Received Chunk: --------\n" << sbuf << "\n-------------";
 
-          processData(string(sbuf));
+          processData(std::string(sbuf));
 
           m_chunk.consume(m_chunkLength);
           m_hasHeader = false;
@@ -602,7 +603,7 @@ namespace mtconnect::source::adapter::agent_adapter {
     asio::io_context::strand m_strand;
     url::Url m_url;
 
-    std::function<std::uint64_t(std::uint64_t, boost::string_view, boost::system::error_code &)>
+    std::function<std::size_t(std::uint64_t, boost::string_view, boost::system::error_code &)>
         m_chunkHandler;
     std::function<void(std::uint64_t, boost::string_view, boost::system::error_code &)>
         m_chunkHeaderHandler;

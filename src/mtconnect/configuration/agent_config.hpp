@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,6 +93,9 @@ namespace mtconnect {
       /// @brief Get the callback manager after the agent is created
       /// @return the callback manager
       auto &afterAgentHooks() { return m_afterAgentHooks; }
+      /// @brief Get the callback manager after the config has completed
+      /// @return the callback manager
+      auto &afterConfigHooks() { return m_afterConfigHooks; }
       /// @brief Get the callback manager after the agent is started
       /// @return the callback manager
       auto &beforeStartHooks() { return m_beforeStartHooks; }
@@ -104,7 +107,8 @@ namespace mtconnect {
       /// @brief stops the agent. Used in daemons.
       void stop() override;
       /// @brief starts the agent. Used in daemons.
-      void start() override;
+      /// @return 0 on success
+      int start() override;
       /// @brief initializes the configuration of the agent from the command line parameters
       /// @param[in] options command line parameters
       void initialize(const boost::program_options::variables_map &options) override;
@@ -179,17 +183,25 @@ namespace mtconnect {
       {
         return m_logChannels[channelName].m_logArchivePattern;
       }
+
+      /// @brief gets the archive log directory
+      /// @return log directory
+      const auto &getArchiveLogDirectory(const std::string &channelName = "agent")
+      {
+        return m_logChannels[channelName].m_archiveLogDirectory;
+      }
+
       /// @brief Get the maximum size of all the log files
       /// @return the maximum size of all log files
-      auto getMaxLogFileSize(const std::string &channelName = "agent")
-      {
-        return m_logChannels[channelName].m_maxLogFileSize;
-      }
-      /// @brief the maximum size of a log file when it triggers rolling over
-      /// @return the maxumum site of a log file
       auto getLogRotationSize(const std::string &channelName = "agent")
       {
         return m_logChannels[channelName].m_logRotationSize;
+      }
+      /// @brief the maximum size of a log file when it triggers rolling over
+      /// @return the maxumum site of a log file
+      auto getMaxLogArchiveSize(const std::string &channelName = "agent")
+      {
+        return m_logChannels[channelName].m_maxLogArchiveSize;
       }
       /// @brief How often to roll over the log file
       ///
@@ -256,6 +268,10 @@ namespace mtconnect {
       /// @param path the path to add
       void addPluginPath(const std::filesystem::path &path) { addPathBack(m_pluginPaths, path); }
 
+      ///@brief set the config path for testing
+      ///@param path the path to set for the config file directory
+      void setConfigPath(const std::filesystem::path &path) { m_configPath = path; }
+
     protected:
       DevicePtr getDefaultDevice();
       void loadAdapters(const ptree &tree, const ConfigOptions &options);
@@ -291,7 +307,7 @@ namespace mtconnect {
           else
           {
             LOG(debug) << "Cannot find file '" << file << "' "
-                       << " in path " << path;
+                       << " in path " << path << ", continuing...";
           }
         }
 
@@ -308,7 +324,7 @@ namespace mtconnect {
         if (!ec)
           paths.emplace_back(con);
         else
-          LOG(debug) << "Cannot file path: " << path << ", " << ec.message();
+          LOG(debug) << "Cannot find path: " << path << ", " << ec.message() << ", skipping...";
       }
 
       void addPathFront(std::list<std::filesystem::path> &paths, std::filesystem::path path)
@@ -344,10 +360,11 @@ namespace mtconnect {
       {
         std::string m_channelName;
         std::filesystem::path m_logDirectory;
+        std::filesystem::path m_archiveLogDirectory;
         std::filesystem::path m_logArchivePattern;
         std::filesystem::path m_logFileName;
 
-        int64_t m_maxLogFileSize {0};
+        int64_t m_maxLogArchiveSize {0};
         int64_t m_logRotationSize {0};
         int64_t m_rotationLogInterval {0};
 
@@ -370,6 +387,7 @@ namespace mtconnect {
       std::string m_devicesFile;
       std::filesystem::path m_exePath;
       std::filesystem::path m_working;
+      std::filesystem::path m_configPath;
 
       std::list<std::filesystem::path> m_configPaths;
       std::list<std::filesystem::path> m_dataPaths;
@@ -401,6 +419,7 @@ namespace mtconnect {
 #endif
 
       HookManager<AgentConfiguration> m_afterAgentHooks;
+      HookManager<AgentConfiguration> m_afterConfigHooks;
       HookManager<AgentConfiguration> m_beforeStartHooks;
       HookManager<AgentConfiguration> m_beforeStopHooks;
     };

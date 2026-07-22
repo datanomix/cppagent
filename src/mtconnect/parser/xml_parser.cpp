@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +62,7 @@ namespace mtconnect::parser {
   using namespace device_model;
   using namespace printer;
 
-  extern "C" void XMLCDECL agentXMLErrorFunc(void *ctx ATTRIBUTE_UNUSED, const char *msg, ...)
+  extern "C" void XMLCDECL agentXMLErrorFunc([[maybe_unused]] void *ctx, const char *msg, ...)
   {
     va_list args;
 
@@ -114,7 +114,6 @@ namespace mtconnect::parser {
     try
     {
       xmlInitParser();
-      xmlXPathInit();
       xmlSetGenericErrorFunc(nullptr, agentXMLErrorFunc);
 
       THROW_IF_XML2_NULL(m_doc = xmlReadFile(filePath.c_str(), nullptr, XML_PARSE_NOBLANKS));
@@ -203,13 +202,26 @@ namespace mtconnect::parser {
         {
           auto device =
               entity::XmlParser::parseXmlNode(Device::getRoot(), nodeset->nodeTab[i], errors);
+
           if (device)
+          {
             deviceList.emplace_back(dynamic_pointer_cast<Device>(device));
+          }
+          else
+          {
+            LOG(error) << "Failed to parse device, skipping";
+          }
 
           if (!errors.empty())
           {
             for (auto &e : errors)
-              LOG(warning) << "Error parsing device: " << e->what();
+            {
+              if (device)
+                LOG(warning) << "When loading device " << device->get<string>("name")
+                             << ", A problem was skipped: " << e->what();
+              else
+                LOG(error) << "Failed to load device: " << e->what();
+            }
           }
         }
       }
@@ -218,7 +230,7 @@ namespace mtconnect::parser {
         xmlXPathFreeObject(devices);
       xmlXPathFreeContext(xpathCtx);
     }
-    catch (string e)
+    catch (const string &e)
     {
       if (devices)
         xmlXPathFreeObject(devices);
@@ -227,7 +239,7 @@ namespace mtconnect::parser {
         xmlXPathFreeContext(xpathCtx);
 
       LOG(fatal) << "Cannot parse XML file: " << e;
-      throw;
+      throw FatalException(e);
     }
     catch (...)
     {
@@ -237,7 +249,7 @@ namespace mtconnect::parser {
       if (xpathCtx)
         xmlXPathFreeContext(xpathCtx);
 
-      throw;
+      throw FatalException();
     }
 
     return deviceList;
@@ -246,33 +258,87 @@ namespace mtconnect::parser {
   DevicePtr XmlParser::parseDevice(const std::string &deviceXml, printer::XmlPrinter *aPrinter)
   {
     DevicePtr device;
-
-    using namespace boost::adaptors;
-    using namespace boost::range;
-
     std::unique_lock lock(m_mutex);
 
+    // Parse the device XML unti an in memory doc and then see if we have a root MTConnectDevices
+    // node or a Device node. If devices, then we need to find the first device and then use the
+    // entity parser to parse the device. We then log any errors.
+
+    xmlDocPtr doc = nullptr;
     try
     {
-      entity::ErrorList errors;
-      auto entity = entity::XmlParser::parse(Device::getRoot(), deviceXml, errors);
-      if (errors.size() > 0)
+      xmlInitParser();
+      xmlSetGenericErrorFunc(nullptr, agentXMLErrorFunc);
+
+      doc = xmlReadMemory(deviceXml.c_str(), int32_t(deviceXml.length()), "DeviceStream.xml",
+                          nullptr, XML_PARSE_NOBLANKS);
+      if (!doc)
+        throw runtime_error("Failed to parse device XML");
+
+      auto root = xmlDocGetRootElement(doc);
+      if (!root)
+        throw runtime_error("Device XML has no root element");
+
+      xmlNodePtr deviceNode = nullptr;
+      if (xmlStrcmp(root->name, BAD_CAST "MTConnectDevices") == 0)
       {
-        LOG(warning) << "Errors parsing Device: " << deviceXml;
-        for (auto &e : errors)
+        for (auto child = root->children; child; child = child->next)
         {
-          LOG(warning) << "   " << e->what();
+          if (xmlStrcmp(child->name, BAD_CAST "Devices") == 0)
+          {
+            deviceNode = child->children;
+            break;
+          }
         }
+      }
+      else if (xmlStrcmp(root->name, BAD_CAST "Device") == 0)
+      {
+        deviceNode = root;
       }
       else
       {
-        device = dynamic_pointer_cast<Device>(entity);
+        throw runtime_error("Root element of device XML must be either MTConnectDevices or Device");
       }
+
+      if (!deviceNode)
+        throw runtime_error("No Device node found in device XML");
+
+      entity::ErrorList errors;
+      auto entity = entity::XmlParser::parseXmlNode(Device::getRoot(), deviceNode, errors);
+
+      for (auto &e : errors)
+      {
+        if (entity)
+          LOG(warning) << "When parsing device, a problem was skipped: " << e->what();
+        else
+          LOG(error) << "Failed to parse device: " << e->what();
+      }
+
+      if (entity)
+        device = dynamic_pointer_cast<Device>(entity);
+      else
+        LOG(error) << "Failed to parse device, skipping";
+
+      xmlFreeDoc(doc);
+      doc = nullptr;
     }
-    catch (string e)
+    catch (const runtime_error &e)
     {
-      LOG(fatal) << "Cannot parse XML document: " << e;
-      throw;
+      if (doc)
+        xmlFreeDoc(doc);
+      LOG(error) << "Cannot parse device XML: " << e.what();
+    }
+    catch (const string &e)
+    {
+      if (doc)
+        xmlFreeDoc(doc);
+      LOG(error) << "Cannot parse XML document: " << e;
+    }
+    catch (...)
+    {
+      if (doc)
+        xmlFreeDoc(doc);
+      LOG(error) << "Cannot parse XML document: unknown exception";
     }
 
     return device;
@@ -302,17 +368,16 @@ namespace mtconnect::parser {
     try
     {
       xmlInitParser();
-      xmlXPathInit();
       xmlSetGenericErrorFunc(nullptr, agentXMLErrorFunc);
 
       THROW_IF_XML2_NULL(m_doc = xmlReadMemory(doc.c_str(), int32_t(doc.length()), "Devices.xml",
                                                nullptr, XML_PARSE_NOBLANKS));
     }
 
-    catch (string e)
+    catch (const string &e)
     {
       LOG(fatal) << "Cannot parse XML document: " << e;
-      throw;
+      throw FatalException("Cannot parse XML document: " + e);
     }
   }
 

@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,7 +154,7 @@ namespace mtconnect {
       }
       else
       {
-        m_observations[id] = dynamic_pointer_cast<Observation>(obs->getptr());
+        m_observations[id] = obs;
       }
     }
 
@@ -170,7 +170,7 @@ namespace mtconnect {
       for (const auto &event : checkpoint.m_observations)
       {
         if (!m_filter || m_filter->count(event.first) > 0)
-          m_observations[event.first] = dynamic_pointer_cast<Observation>(event.second->getptr());
+          m_observations[event.first] = event.second;
       }
     }
 

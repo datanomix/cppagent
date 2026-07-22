@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,8 +30,6 @@ namespace boost::asio::ssl {
 
 /// @brief  @brief the agent adapter namespace
 namespace mtconnect::source::adapter::agent_adapter {
-  using namespace mtconnect;
-  using namespace source::adapter;
 
   /// @brief The Agent adapter pipeline
   class AGENT_LIB_API AgentAdapterPipeline : public AdapterPipeline
@@ -91,6 +89,10 @@ namespace mtconnect::source::adapter::agent_adapter {
     /// @return reference to the transform feedback
     auto &getFeedback() { return m_feedback; }
 
+    /// @brief get the current outstanding stream request (for testing)
+    /// @return reference to the optional stream request
+    auto &getStreamRequest() { return m_streamRequest; }
+
     ~AgentAdapter() override;
 
     /// @name Source interface
@@ -130,7 +132,6 @@ namespace mtconnect::source::adapter::agent_adapter {
     url::Url m_url;
     int m_count = 1000;
     std::chrono::milliseconds m_heartbeat;
-    bool m_reconnecting = false;
     bool m_failed = false;
     bool m_stopped = false;
     bool m_usePolling = false;

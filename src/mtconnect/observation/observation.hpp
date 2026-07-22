@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ namespace mtconnect::observation {
   class Observation;
   using ObservationPtr = std::shared_ptr<Observation>;
   using ConstObservationPtr = std::shared_ptr<const Observation>;
-  using ObservationList = std::list<ObservationPtr>;
+  using ObservationList = std::vector<ObservationPtr>;
 
   /// @brief Abstract observation
   class AGENT_LIB_API Observation : public entity::Entity

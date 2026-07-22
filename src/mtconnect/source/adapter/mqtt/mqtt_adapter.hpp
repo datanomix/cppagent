@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +21,6 @@
 #include "mtconnect/mqtt/mqtt_client.hpp"
 #include "mtconnect/source/adapter/adapter.hpp"
 #include "mtconnect/source/adapter/adapter_pipeline.hpp"
-
-using namespace mtconnect::mqtt_client;
 
 /// @brief  @brief the Mqtt adapter namespace
 namespace mtconnect::source::adapter::mqtt_adapter {
@@ -100,6 +98,6 @@ namespace mtconnect::source::adapter::mqtt_adapter {
 
     MqttPipeline m_pipeline;
 
-    std::shared_ptr<MqttClient> m_client;
+    std::shared_ptr<mqtt_client::MqttClient> m_client;
   };
 }  // namespace mtconnect::source::adapter::mqtt_adapter

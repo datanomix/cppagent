@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,7 +68,8 @@ protected:
   void SetUp() override
   {
     m_agentTestHelper = make_unique<AgentTestHelper>();
-    m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "1.3", 25, true);
+    m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "1.3", 25, true, true,
+                                   {{configuration::JsonVersion, 2}});
     m_agentId = to_string(getCurrentTimeInSec());
   }
 
@@ -87,7 +88,7 @@ public:
   std::chrono::milliseconds m_delay {};
 };
 
-TEST_F(AgentTest, Constructor)
+TEST_F(AgentTest, agent_throws_fatal_exception_for_bad_path_and_initializes_with_valid_path)
 {
   using namespace configuration;
   ConfigOptions options {{BufferSize, 17}, {MaxAssets, 8}, {SchemaVersion, "1.7"s}};
@@ -97,7 +98,7 @@ TEST_F(AgentTest, Constructor)
   auto context = std::make_shared<pipeline::PipelineContext>();
   context->m_contract = agent->makePipelineContract();
 
-  ASSERT_THROW(agent->initialize(context), std::runtime_error);
+  ASSERT_THROW(agent->initialize(context), FatalException);
   agent.reset();
 
   agent = make_unique<Agent>(m_agentTestHelper->m_ioContext,
@@ -108,7 +109,7 @@ TEST_F(AgentTest, Constructor)
   ASSERT_NO_THROW(agent->initialize(context));
 }
 
-TEST_F(AgentTest, Probe)
+TEST_F(AgentTest, probe_endpoint_returns_device_name_for_multiple_paths)
 {
   {
     PARSE_XML_RESPONSE("/probe");
@@ -131,7 +132,7 @@ TEST_F(AgentTest, Probe)
   }
 }
 
-TEST_F(AgentTest, FailWithDuplicateDeviceUUID)
+TEST_F(AgentTest, agent_throws_fatal_exception_when_devices_have_duplicate_uuid)
 {
   using namespace configuration;
   ConfigOptions options {{BufferSize, 17}, {MaxAssets, 8}, {SchemaVersion, "1.5"s}};
@@ -141,7 +142,7 @@ TEST_F(AgentTest, FailWithDuplicateDeviceUUID)
   auto context = std::make_shared<pipeline::PipelineContext>();
   context->m_contract = agent->makePipelineContract();
 
-  ASSERT_THROW(agent->initialize(context), std::runtime_error);
+  ASSERT_THROW(agent->initialize(context), FatalException);
 }
 
 TEST_F(AgentTest, should_return_error_for_unknown_device)
@@ -518,7 +519,7 @@ TEST_F(AgentTest, should_report_2_6_out_of_range_for_current_at)
   }
 }
 
-TEST_F(AgentTest, AddAdapter) { addAdapter(); }
+TEST_F(AgentTest, adapter_can_be_added_to_agent) { addAdapter(); }
 
 TEST_F(AgentTest, should_download_file)
 {
@@ -1270,7 +1271,7 @@ TEST_F(AgentTest, should_ignore_timestamps_if_configured_to_do_so)
   }
 }
 
-TEST_F(AgentTest, InitialTimeSeriesValues)
+TEST_F(AgentTest, time_series_data_item_reports_unavailable_initially)
 {
   addAdapter();
 
@@ -2400,7 +2401,7 @@ TEST_F(AgentTest, put_condition_should_parse_condition_data)
   }
 }
 
-TEST_F(AgentTest, shound_add_asset_count_when_20)
+TEST_F(AgentTest, asset_count_data_item_is_added_to_probe_in_schema_2_0)
 {
   m_agentTestHelper->createAgent("/samples/min_config.xml", 8, 4, "2.0", 25);
 
@@ -2620,5 +2621,187 @@ TEST_F(AgentTest, should_initialize_observaton_to_initial_value_when_available)
   {
     PARSE_XML_RESPONSE("/current");
     ASSERT_XML_PATH_EQUAL(doc, "//m:DeviceStream//m:PartCount", "0");
+  }
+}
+
+TEST_F(AgentTest, should_handle_japanese_characters)
+{
+  using namespace nlohmann;
+
+  addAdapter({{configuration::FilterDuplicates, true}});
+  auto agent = m_agentTestHelper->getAgent();
+  auto logic = agent->getDataItemForDevice("LinuxCNC", "lp");
+  ASSERT_TRUE(logic);
+
+  m_agentTestHelper->m_adapter->processData(
+      "2026-01-07T22:32:50.8567651Z|lp|FAULT|1111|||ｽﾄﾛｰｸｴﾝﾄﾞ軸あり");
+
+  // Validate we can handle Japanese characters.
+  {
+    PARSE_XML_RESPONSE("/current");
+    ASSERT_XML_PATH_EQUAL(doc,
+                          "//m:DeviceStream//"
+                          "m:ComponentStream[@component='Controller']/m:Condition/"
+                          "m:Fault[@dataItemId='lp']",
+                          "ｽﾄﾛｰｸｴﾝﾄﾞ軸あり");
+  }
+
+  // And in JSON
+  {
+    PARSE_JSON_RESPONSE("/current");
+    json streams = doc.at("/MTConnectStreams/Streams/DeviceStream/0/ComponentStream"_json_pointer);
+    ASSERT_TRUE(streams.is_array());
+    auto controller = std::find_if(streams.begin(), streams.end(), [](const nlohmann::json &comp) {
+      return comp.at("/component"_json_pointer).get<string>() == "Controller";
+    });
+    ASSERT_NE(streams.end(), controller);
+    json fault = controller->at("/Condition/Fault/0"_json_pointer);
+    ASSERT_TRUE(fault.is_object());
+    ASSERT_EQ("ｽﾄﾛｰｸｴﾝﾄﾞ軸あり", fault.at("/value"_json_pointer).get<string>());
+  }
+}
+
+TEST_F(AgentTest, should_have_device_model_change_time_in_the_header_for_v1_7)
+{
+  using namespace nlohmann;
+
+  m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "1.7", 4, true, true,
+                                 {{configuration::JsonVersion, 2}});
+  {
+    PARSE_JSON_RESPONSE("/current");
+    json header = doc.at("/MTConnectStreams/Header"_json_pointer);
+    ASSERT_TRUE(header.is_object());
+    ASSERT_TRUE(header.contains("deviceModelChangeTime"));
+    ASSERT_FALSE(header.at("/deviceModelChangeTime"_json_pointer).get<string>().empty());
+  }
+}
+
+TEST_F(AgentTest, should_not_have_device_model_change_time_in_the_header_for_pre_v1_7)
+{
+  using namespace nlohmann;
+
+  m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "1.6", 4, true, true,
+                                 {{configuration::JsonVersion, 2}});
+  {
+    PARSE_JSON_RESPONSE("/current");
+    json header = doc.at("/MTConnectStreams/Header"_json_pointer);
+    ASSERT_TRUE(header.is_object());
+    ASSERT_FALSE(header.contains("deviceModelChangeTime"));
+  }
+}
+
+TEST_F(AgentTest, should_add_the_default_schema_location_for_json_documents)
+{
+  using namespace nlohmann;
+  m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "2.7", 4, true, true,
+                                 {{configuration::JsonVersion, 2}});
+
+  {
+    PARSE_JSON_RESPONSE("/probe");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("https://schemas.mtconnect.org/schemas/MTConnectDevices_2.7.schema.json",
+              schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/current");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("https://schemas.mtconnect.org/schemas/MTConnectStreams_2.7.schema.json",
+              schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/assets");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("https://schemas.mtconnect.org/schemas/MTConnectAssets_2.7.schema.json",
+              schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/junk");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("https://schemas.mtconnect.org/schemas/MTConnectError_2.7.schema.json",
+              schema.get<string>());
+  }
+}
+
+TEST_F(AgentTest, should_not_add_the_default_schema_location_for_json_documents_for_json_v1)
+{
+  using namespace nlohmann;
+  m_agentTestHelper->createAgent("/samples/test_config.xml", 8, 4, "2.7", 4, true, true,
+                                 {{configuration::JsonVersion, 1}});
+
+  {
+    PARSE_JSON_RESPONSE("/probe");
+    ASSERT_FALSE(doc.contains("/$schema"_json_pointer));
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/current");
+    ASSERT_FALSE(doc.contains("/$schema"_json_pointer));
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/assets");
+    ASSERT_FALSE(doc.contains("/$schema"_json_pointer));
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/junk");
+    ASSERT_FALSE(doc.contains("/$schema"_json_pointer));
+  }
+}
+
+TEST_F(AgentTest, should_add_local_locations_when_files_are_given)
+{
+  using namespace nlohmann;
+  auto configFiles = std::format(R"(Files {{
+  schemas {{
+    Path = {}/schemas
+    Location = /myschemas/
+  }}
+}}
+)",
+                                 PROJECT_ROOT_DIR);
+
+  auto config = configuration::Parser::parse(configFiles);
+
+  m_agentTestHelper->createAgent(
+      "/samples/test_config.xml", 8, 4, "2.7", 4, true, true,
+      {{configuration::JsonVersion, 2}, {configuration::ExternalBaseUrl, "http://localhost:0"s}},
+      config);
+
+  {
+    PARSE_JSON_RESPONSE("/probe");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("http://localhost:0/myschemas/MTConnectDevices_2.7.schema.json",
+              schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/current");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("http://localhost:0/myschemas/MTConnectStreams_2.7.schema.json",
+              schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/assets");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("http://localhost:0/myschemas/MTConnectAssets_2.7.schema.json", schema.get<string>());
+  }
+
+  {
+    PARSE_JSON_RESPONSE("/junk");
+    json schema = doc.at("/$schema"_json_pointer);
+    ASSERT_TRUE(schema.is_string());
+    ASSERT_EQ("http://localhost:0/myschemas/MTConnectError_2.7.schema.json", schema.get<string>());
   }
 }

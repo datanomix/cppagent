@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,7 +67,7 @@ namespace mtconnect::printer {
     obj.AddPairs("version", version, "creationTime", getCurrentTime(GMT), "testIndicator", false,
                  "instanceId", instanceId, "sender", hostname, "schemaVersion", schemaVersion);
 
-    if (schemaVersion >= "1.7")
+    if (IntSchemaVersion(schemaVersion) >= SCHEMA_VERSION(1, 7))
       obj.AddPairs("deviceModelChangeTime", modelChangeTime);
     if (bufferSize > 0)
       obj.AddPairs("bufferSize", bufferSize);
@@ -131,6 +131,12 @@ namespace mtconnect::printer {
 
       AutoJsonObject obj(writer);
       {
+        if (m_errorSchema)
+          obj.AddPairs("$schema", *m_errorSchema);
+        else if (m_schemaVersion && m_jsonVersion == 2)
+          obj.AddPairs("$schema", "https://schemas.mtconnect.org/schemas/MTConnectError_" +
+                                      *m_schemaVersion + ".schema.json");
+
         AutoJsonObject obj(writer, "MTConnectError");
         obj.AddPairs("jsonVersion", m_jsonVersion);
 
@@ -175,6 +181,12 @@ namespace mtconnect::printer {
       entity::JsonPrinter printer(writer, m_jsonVersion, includeHidden);
 
       AutoJsonObject top(writer);
+      if (m_devicesSchema)
+        top.AddPairs("$schema", *m_devicesSchema);
+      else if (m_schemaVersion && m_jsonVersion == 2)
+        top.AddPairs("$schema", "https://schemas.mtconnect.org/schemas/MTConnectDevices_" +
+                                    *m_schemaVersion + ".schema.json");
+
       AutoJsonObject obj(writer, "MTConnectDevices");
       obj.AddPairs("jsonVersion", m_jsonVersion, "schemaVersion", *m_schemaVersion);
       {
@@ -203,6 +215,12 @@ namespace mtconnect::printer {
       entity::JsonPrinter printer(writer, m_jsonVersion);
 
       AutoJsonObject top(writer);
+      if (m_assetsSchema)
+        top.AddPairs("$schema", *m_assetsSchema);
+      else if (m_schemaVersion && m_jsonVersion == 2)
+        top.AddPairs("$schema", "https://schemas.mtconnect.org/schemas/MTConnectAssets_" +
+                                    *m_schemaVersion + ".schema.json");
+
       AutoJsonObject obj(writer, "MTConnectAssets");
       obj.AddPairs("jsonVersion", m_jsonVersion, "schemaVersion", *m_schemaVersion);
       {
@@ -402,6 +420,12 @@ namespace mtconnect::printer {
     StringBuffer output;
     RenderJson(output, m_pretty || pretty, [&](auto &writer) {
       AutoJsonObject top(writer);
+      if (m_streamsSchema)
+        top.AddPairs("$schema", *m_streamsSchema);
+      else if (m_schemaVersion && m_jsonVersion == 2)
+        top.AddPairs("$schema", "https://schemas.mtconnect.org/schemas/MTConnectStreams_" +
+                                    *m_schemaVersion + ".schema.json");
+
       AutoJsonObject obj(writer, "MTConnectStreams");
       obj.AddPairs("jsonVersion", m_jsonVersion, "schemaVersion", *m_schemaVersion);
       {
