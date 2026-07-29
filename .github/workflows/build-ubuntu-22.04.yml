@@ -41,7 +41,12 @@ jobs:
         sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
         sudo apt update
         sudo apt install -y build-essential cmake gcc-13 g++-13 python3 python3-pip autoconf automake rake ruby
-      
+        # Select gcc-13 as the default so `conan profile detect` uses it. std::format
+        # (e.g. xml_printer_helper.hpp) requires gcc-13's libstdc++; the ubuntu-22.04
+        # default gcc-11 lacks it. Mirrors docker/Dockerfile.ubuntu-22.04.
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+
     - name: Checkout Agent
       uses: actions/checkout@v3
 
