@@ -64,11 +64,11 @@ jobs:
         echo $CTEST_OUTPUT_ON_FAILURE
               
     - name: Checkout Agent
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Restore cached conan packages
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ env.CONAN_HOME }}
         key: ${{ runner.os }}-build-${{ matrix.profile }}-${{ hashFiles('**/conanfile.py') }}
@@ -129,11 +129,11 @@ jobs:
         sudo apt install -y build-essential cmake gcc-11 g++-11 python3 autoconf automake
       
     - name: Checkout Agent
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Restore cached conan packages
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.conan2
         key: ${{ runner.os }}-build-${{ matrix.shared }}-${{ hashFiles('**/conanfile.py') }}
@@ -217,11 +217,11 @@ jobs:
             
     steps:
     - name: Checkout Agent
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Restore cached conan packages
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.conan2
         key: ${{ runner.os }}-build-${{ matrix.shared }}-${{ hashFiles('**/conanfile.py') }}
