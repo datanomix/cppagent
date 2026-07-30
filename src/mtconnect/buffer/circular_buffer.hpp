@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -126,36 +126,43 @@ namespace mtconnect::buffer {
       if (observation->isOrphan())
         return 0;
 
-      std::lock_guard<std::recursive_mutex> lock(m_sequenceLock);
-      auto dataItem = observation->getDataItem();
-      auto seq = m_sequence;
+      SequenceNumber_t seq;
+      DataItemPtr dataItem;
 
-      observation->setSequence(seq);
-      m_slidingBuffer.push_back(observation);
-      m_latest.addObservation(observation);
-
-      // Special case for the first event in the series to prime the first checkpoint.
-      if (seq == 1)
-        m_first.addObservation(observation);
-      else if (m_slidingBuffer.full())
       {
-        observation::ObservationPtr old = m_slidingBuffer.front();
-        m_first.addObservation(old);
-        if (old->getSequence() > 1)
-          m_firstSequence++;
-        // assert(old->getSequence() == m_firstSequence);
+        std::lock_guard<std::recursive_mutex> lock(m_sequenceLock);
+        dataItem = observation->getDataItem();
+        seq = m_sequence;
+
+        observation->setSequence(seq);
+        m_slidingBuffer.push_back(observation);
+        m_latest.addObservation(observation);
+
+        // Special case for the first event in the series to prime the first checkpoint.
+        if (seq == 1)
+          m_first.addObservation(observation);
+        else if (m_slidingBuffer.full())
+        {
+          observation::ObservationPtr old = m_slidingBuffer.front();
+          m_first.addObservation(old);
+          if (old->getSequence() > 1)
+            m_firstSequence++;
+          // assert(old->getSequence() == m_firstSequence);
+        }
+
+        // Checkpoint management
+        if (m_checkpointCount > 0 && (seq % m_checkpointFreq) == 0)
+        {
+          // Copy the checkpoint from the current into the slot
+          m_checkpoints.push_back(std::make_unique<Checkpoint>(m_latest));
+        }
+
+        m_sequence++;
       }
 
-      // Checkpoint management
-      if (m_checkpointCount > 0 && (seq % m_checkpointFreq) == 0)
-      {
-        // Copy the checkpoint from the current into the slot
-        m_checkpoints.push_back(std::make_unique<Checkpoint>(m_latest));
-      }
-
-      dataItem->signalObservers(m_sequence);
-
-      m_sequence++;
+      // Signal observers outside the lock to avoid three-deep lock nesting
+      // (m_sequenceLock -> m_observerMutex -> observer m_mutex) on every write
+      dataItem->signalObservers(seq);
 
       return seq;
     }
@@ -326,8 +333,8 @@ namespace mtconnect::buffer {
     mutable std::recursive_mutex m_sequenceLock;
 
     // Sequence number
-    volatile SequenceNumber_t m_sequence;
-    volatile SequenceNumber_t m_firstSequence;
+    SequenceNumber_t m_sequence;
+    SequenceNumber_t m_firstSequence;
 
     // The sliding/circular buffer to hold all of the events/sample data
     unsigned int m_slidingBufferSize;

@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ namespace mtconnect {
       /// @brief stop the srvice
       virtual void stop() = 0;
       /// @brief start the service
-      virtual void start() = 0;
+      virtual int start() = 0;
 
       /// @brief set the name of the service
       /// @param[in] name name of the service

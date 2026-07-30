@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +62,6 @@ using namespace std;
 namespace mtconnect::ruby {
   using namespace mtconnect::pipeline;
   using namespace std::literals;
-  using namespace date::literals;
   using namespace observation;
 
   RClass *RubyObservation::m_eventClass;
@@ -187,18 +186,18 @@ namespace mtconnect::ruby {
             if (mrb_false_p(res))
             {
               LOG(fatal) << "Error loading file " << *modulePath << ": exiting agent";
-              exit(1);
+              throw FatalException("Fatal error loading module");
             }
           }
           catch (std::exception ex)
           {
             LOG(fatal) << "Failed to load module: " << *modulePath << ": " << ex.what();
-            exit(1);
+            throw FatalException("Fatal error loading module");
           }
           catch (...)
           {
             LOG(fatal) << "Failed to load module: " << *modulePath;
-            exit(1);
+            throw FatalException("Fatal error loading module");
           }
           if (fp != nullptr)
           {

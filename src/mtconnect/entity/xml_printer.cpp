@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include <unordered_map>
 
+#include <libxml/entities.h>
 #include <libxml/xmlwriter.h>
 
 #include "mtconnect/logging.hpp"
@@ -39,42 +40,6 @@ namespace mtconnect {
         name = qname;
 
       return name;
-    }
-
-    static inline void addAttributes(xmlTextWriterPtr writer,
-                                     const std::map<string, string> &attributes)
-    {
-      for (const auto &attr : attributes)
-      {
-        if (!attr.second.empty())
-        {
-          THROW_IF_XML2_ERROR(
-              writeXmlAttribute(writer, attr.first.c_str(), attr.second.c_str()));
-        }
-      }
-    }
-
-    static void addSimpleElement(xmlTextWriterPtr writer, const string &element, const string &body,
-                                 const map<string, string> &attributes = {}, bool raw = false)
-    {
-      AutoElement ele(writer, element);
-
-      if (!attributes.empty())
-        addAttributes(writer, attributes);
-
-      if (!body.empty())
-      {
-        if (!raw)
-        {
-          xmlChar *text = xmlEncodeEntitiesReentrant(nullptr, BAD_CAST body.c_str());
-          THROW_IF_XML2_ERROR(writeXmlRaw(writer, reinterpret_cast<const char *>(text)));
-          xmlFree(text);
-        }
-        else
-        {
-          THROW_IF_XML2_ERROR(writeXmlRaw(writer, body.c_str()));
-        }
-      }
     }
 
     void printDataSet(xmlTextWriterPtr writer, const std::string &name, const DataSet &set)

@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,7 +60,7 @@ protected:
   std::unique_ptr<printer::XmlWriter> m_writer;
 };
 
-TEST_F(AssetTest, TestExtendedAsset)
+TEST_F(AssetTest, extended_asset_with_arbitrary_content_is_parsed_and_printed)
 {
   auto doc =
       R"DOC(<ExtendedAsset assetId="EXT1" deviceUuid="local" timestamp="2020-12-20T12:00:00Z">

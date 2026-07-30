@@ -28,8 +28,8 @@
 # os
 # ---------------------------------------------------------------------
 
-# base image - alpine 3.18
-FROM alpine:3.19 AS os
+# base image - alpine 3.23
+FROM alpine:3.23 AS os
 
 # ---------------------------------------------------------------------
 # build
@@ -53,6 +53,7 @@ ENV CONAN_PROFILE="$HOME/agent/cppagent/conan/profiles/docker"
 RUN  apk --update add \
        autoconf \
        automake \
+       bash \
        cmake \
        g++ \
        gcompat \
@@ -74,7 +75,7 @@ WORKDIR /root/agent
 COPY . cppagent
 
 ARG WITH_TESTS=false
-ARG WITH_TESTS_ARG=argument
+ARG WITH_TESTS_ARG=
 
 # Build and optionally test. Unpack the dist to reduce overhead in the following release step.
 RUN  if [ -z "$WITH_TESTS" ] || [ "$WITH_TESTS" = "false" ]; then \
@@ -85,7 +86,7 @@ RUN  if [ -z "$WITH_TESTS" ] || [ "$WITH_TESTS" = "false" ]; then \
   && . /python/conan/bin/activate \
   && conan profile detect \
   && conan create cppagent \
-       --build=missing \
+       --build="*" \
        -c "tools.build:jobs=$CONAN_CPU_COUNT" \
        -o agent_prefix=mtc \
        -o cpack=True \
@@ -94,7 +95,7 @@ RUN  if [ -z "$WITH_TESTS" ] || [ "$WITH_TESTS" = "false" ]; then \
        -o cpack_name=dist \
        -o cpack_generator=TGZ \
        -pr "$CONAN_PROFILE" \
-       "${WITH_TESTS_ARG}" \
+       ${WITH_TESTS_ARG} \
   && tar xf dist.tar.gz \
   && rm dist.tar.gz
 

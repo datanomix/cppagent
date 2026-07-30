@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -125,7 +125,9 @@ namespace mtconnect::source::adapter::agent_adapter {
     }
     else if (device || HasOption(m_options, configuration::SourceDevice))
     {
-      m_sourceDevice = GetOption<string>(m_options, configuration::SourceDevice).value_or(*device);
+      m_sourceDevice = GetOption<string>(m_options, configuration::SourceDevice);
+      if (!m_sourceDevice)
+        m_sourceDevice = device;
     }
     else
     {
@@ -134,14 +136,8 @@ namespace mtconnect::source::adapter::agent_adapter {
     }
 
     m_name = m_url.getUrlText(m_sourceDevice);
-    boost::uuids::detail::sha1 sha1;
-    sha1.process_bytes(m_name.c_str(), m_name.length());
-    boost::uuids::detail::sha1::digest_type digest;
-    sha1.get_digest(digest);
-
-    stringstream identity;
-    identity << std::hex << digest[0] << digest[1] << digest[2];
-    m_identity = string("_") + (identity.str()).substr(0, 10);
+    m_identity = CreateIdentityHash(m_name);
+    m_host = m_url.getHost();
 
     m_options.insert_or_assign(configuration::AdapterIdentity, m_identity);
     m_feedbackId = "XmlTransformFeedback:" + m_identity;
@@ -185,18 +181,18 @@ namespace mtconnect::source::adapter::agent_adapter {
       return false;
     }
 
-    m_session->m_handler = m_handler.get();
-    m_session->m_identity = m_identity;
-    m_session->m_closeConnectionAfterResponse = m_closeConnectionAfterResponse;
-    m_session->m_updateAssets = [this]() { updateAssets(); };
+    m_session->setHandler(m_handler.get());
+    m_session->setIdentity(m_identity);
+    m_session->setCloseConnectionAfterResponse(m_closeConnectionAfterResponse);
+    m_session->setUpdateAssets([this]() { updateAssets(); });
 
-    m_assetSession->m_handler = m_handler.get();
-    m_assetSession->m_identity = m_identity;
-    m_assetSession->m_closeConnectionAfterResponse = m_closeConnectionAfterResponse;
+    m_assetSession->setHandler(m_handler.get());
+    m_assetSession->setIdentity(m_identity);
+    m_assetSession->setCloseConnectionAfterResponse(m_closeConnectionAfterResponse);
 
     using namespace std::placeholders;
-    m_assetSession->m_failed = std::bind(&AgentAdapter::assetsFailed, this, _1);
-    m_session->m_failed = std::bind(&AgentAdapter::streamsFailed, this, _1);
+    m_assetSession->setFailed(std::bind(&AgentAdapter::assetsFailed, this, _1));
+    m_session->setFailed(std::bind(&AgentAdapter::streamsFailed, this, _1));
 
     run();
 
@@ -232,15 +228,20 @@ namespace mtconnect::source::adapter::agent_adapter {
     }
 
     m_reconnectTimer.expires_after(m_reconnectInterval);
-    m_reconnectTimer.async_wait(asio::bind_executor(m_strand, [this](boost::system::error_code ec) {
-      if (!ec)
-      {
-        if (canRecover() && m_streamRequest)
-          m_session->makeRequest(*m_streamRequest);
-        else
-          run();
-      }
-    }));
+    m_reconnectTimer.async_wait(asio::bind_executor(
+        m_strand, [weak = std::weak_ptr(getptr())](boost::system::error_code ec) {
+          if (auto self = weak.lock(); self && !ec)
+          {
+            // Rebuild the sample request from the latest processed sequence rather
+            // than replaying the cached request. In streaming mode the cached
+            // request's `from` is baked in when the stream opens and never advances,
+            // so replaying it re-delivers every observation seen during the session.
+            if (self->canRecover() && self->m_streamRequest)
+              self->recover();
+            else
+              self->run();
+          }
+        }));
   }
 
   void AgentAdapter::recoverAssetRequest()
@@ -248,11 +249,11 @@ namespace mtconnect::source::adapter::agent_adapter {
     if (m_assetRequest)
     {
       m_assetRetryTimer.expires_after(m_reconnectInterval);
-      m_assetRetryTimer.async_wait(
-          asio::bind_executor(m_strand, [this](boost::system::error_code ec) {
-            if (!ec && m_assetRequest)
+      m_assetRetryTimer.async_wait(asio::bind_executor(
+          m_strand, [weak = std::weak_ptr(getptr())](boost::system::error_code ec) {
+            if (auto self = weak.lock(); self && !ec && self->m_assetRequest)
             {
-              m_assetSession->makeRequest(*m_assetRequest);
+              self->m_assetSession->makeRequest(*self->m_assetRequest);
             }
           }));
     }
@@ -355,7 +356,6 @@ namespace mtconnect::source::adapter::agent_adapter {
 
     clear();
 
-    m_reconnecting = false;
     if (m_probeAgent)
     {
       probe();
@@ -372,7 +372,6 @@ namespace mtconnect::source::adapter::agent_adapter {
     if (m_stopped)
       return;
 
-    m_reconnecting = false;
     sample();
   }
 
@@ -411,11 +410,11 @@ namespace mtconnect::source::adapter::agent_adapter {
                       {"count", lexical_cast<string>(m_count)}});
       m_streamRequest.emplace(m_sourceDevice, "sample", query, false, [this]() {
         m_pollingTimer.expires_after(m_pollingInterval);
-        m_pollingTimer.async_wait(
-            asio::bind_executor(m_strand, [this](boost::system::error_code ec) {
-              if (!ec && m_streamRequest)
+        m_pollingTimer.async_wait(asio::bind_executor(
+            m_strand, [weak = std::weak_ptr(getptr())](boost::system::error_code ec) {
+              if (auto self = weak.lock(); self && !ec && self->m_streamRequest)
               {
-                sample();
+                self->sample();
               }
             }));
         return true;

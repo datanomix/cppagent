@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -106,8 +106,8 @@ protected:
   std::map<string, DataItemPtr> m_dataItems;
 };
 
-inline DataSetEntry operator"" _E(const char *c, std::size_t) { return DataSetEntry(c); }
-inline TableCell operator"" _C(const char *c, std::size_t) { return TableCell(c); }
+inline DataSetEntry operator""_E(const char *c, std::size_t) { return DataSetEntry(c); }
+inline TableCell operator""_C(const char *c, std::size_t) { return TableCell(c); }
 
 TEST_F(DataItemMappingTest, should_map_simple_sample)
 {

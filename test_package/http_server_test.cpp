@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +42,7 @@ using namespace mtconnect::sink::rest_sink;
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
+namespace ip = asio::ip;
 using tcp = boost::asio::ip::tcp;
 
 // main
@@ -70,7 +71,7 @@ public:
     beast::error_code ec;
 
     // These objects perform our I/O
-    tcp::endpoint server(asio::ip::address_v4::from_string("127.0.0.1"), port);
+    tcp::endpoint server(ip::make_address("127.0.0.1"), port);
 
     // Set the timeout.
     m_stream.expires_after(std::chrono::seconds(30));
@@ -231,7 +232,8 @@ public:
 
   void spawnReadChunk()
   {
-    asio::spawn(m_context, std::bind(&Client::readChunk, this, std::placeholders::_1));
+    asio::spawn(m_context, std::bind(&Client::readChunk, this, std::placeholders::_1),
+                boost::asio::detached);
   }
 
   void spawnRequest(boost::beast::http::verb verb, std::string const& target,
@@ -241,8 +243,10 @@ public:
     cout << "spawnRequest: done: false" << endl;
     m_done = false;
     m_count = 0;
-    asio::spawn(m_context, std::bind(&Client::request, this, verb, target, body, close, contentType,
-                                     std::placeholders::_1));
+    asio::spawn(m_context,
+                std::bind(&Client::request, this, verb, target, body, close, contentType,
+                          std::placeholders::_1),
+                boost::asio::detached);
 
     while (!m_done && m_context.run_for(20ms) > 0)
       ;
@@ -271,7 +275,7 @@ public:
   map<string, string> m_fields;
   string m_contentType;
 
-  std::function<std::uint64_t(std::uint64_t, boost::string_view, boost::system::error_code&)>
+  std::function<std::size_t(std::uint64_t, boost::string_view, boost::system::error_code&)>
       m_chunkHandler;
   std::function<void(std::uint64_t, boost::string_view, boost::system::error_code&)>
       m_headerHandler;
@@ -307,7 +311,8 @@ protected:
     m_client->m_connected = false;
     asio::spawn(m_context,
                 std::bind(&Client::connect, m_client.get(),
-                          static_cast<unsigned short>(m_server->getPort()), std::placeholders::_1));
+                          static_cast<unsigned short>(m_server->getPort()), std::placeholders::_1),
+                boost::asio::detached);
 
     while (!m_client->m_connected)
       m_context.run_one();
@@ -728,6 +733,301 @@ TEST_F(HttpServerTest, accept_loop_rearms_after_recoverable_error)
   // The server remains running and listening after recovering from the error.
   EXPECT_TRUE(m_server->isRunning());
   EXPECT_TRUE(m_server->isListening());
+}
+
+TEST_F(HttpServerTest, options_returns_allowed_methods_for_get_only_path)
+{
+  auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/probe", handler});
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/probe");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+
+  auto acam = m_client->m_fields.find("Access-Control-Allow-Methods");
+  ASSERT_NE(m_client->m_fields.end(), acam);
+  EXPECT_EQ(allow->second, acam->second);
+
+  auto acah = m_client->m_fields.find("Access-Control-Allow-Headers");
+  ASSERT_NE(m_client->m_fields.end(), acah);
+
+  auto acma = m_client->m_fields.find("Access-Control-Max-Age");
+  ASSERT_NE(m_client->m_fields.end(), acma);
+  EXPECT_EQ("86400", acma->second);
+}
+
+TEST_F(HttpServerTest, options_returns_get_put_and_delete_when_registered)
+{
+  auto getHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto putHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Put ok");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto deleteHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Deleted");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/asset/{id}", getHandler});
+  m_server->addRouting({http::verb::put, "/asset/{id}", putHandler});
+  m_server->addRouting({http::verb::delete_, "/asset/{id}", deleteHandler});
+  m_server->allowPuts();
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/asset/123");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_NE(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_NE(string::npos, allow->second.find("DELETE"));
+}
+
+TEST_F(HttpServerTest, options_returns_get_when_a_specific_and_wildcard_route_are_given)
+{
+  auto getHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto putHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Put ok");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto deleteHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Deleted");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/current", getHandler});
+  m_server->addRouting({http::verb::put, "/{device}?timestamp={timestamp}", putHandler});
+  m_server->addRouting({http::verb::delete_, "/{device}?timestamp={timestamp}", deleteHandler});
+  m_server->allowPuts();
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/current");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+}
+
+TEST_F(HttpServerTest, options_returns_get_when_complex_path_route_are_given)
+{
+  auto getHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto putHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Put ok");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+  auto deleteHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Deleted");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/{device}/current", getHandler});
+  m_server->addRouting({http::verb::put, "/{device}/{command}?timestamp={timestamp}", putHandler});
+  m_server->addRouting(
+      {http::verb::delete_, "/{device}/{command}?timestamp={timestamp}", deleteHandler});
+  m_server->allowPuts();
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/mydevice/current");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+}
+
+TEST_F(HttpServerTest, options_allowed_even_when_puts_disabled)
+{
+  auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/probe", handler});
+  // Note: puts are NOT enabled
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/probe");
+  ASSERT_TRUE(m_client->m_done);
+
+  // OPTIONS should succeed even though puts are disabled
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+}
+
+TEST_F(HttpServerTest, options_includes_configured_cors_origin_header)
+{
+  m_server->setHttpHeaders({"Access-Control-Allow-Origin:*"});
+
+  auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({http::verb::get, "/probe", handler});
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/probe");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  // Access-Control-Allow-Origin comes from the configured HttpHeaders
+  auto acao = m_client->m_fields.find("Access-Control-Allow-Origin");
+  ASSERT_NE(m_client->m_fields.end(), acao);
+  ASSERT_EQ("*", acao->second);
+
+  // Access-Control-Allow-Methods comes from the OPTIONS handler
+  auto acam = m_client->m_fields.find("Access-Control-Allow-Methods");
+  ASSERT_NE(m_client->m_fields.end(), acam);
+  EXPECT_NE(string::npos, acam->second.find("GET"));
+  EXPECT_NE(string::npos, acam->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, acam->second.find("PUT"));
+  EXPECT_EQ(string::npos, acam->second.find("POST"));
+  EXPECT_EQ(string::npos, acam->second.find("DELETE"));
+}
+
+TEST_F(HttpServerTest, options_returns_correctly_for_path_with_parameter_value)
+{
+  auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({boost::beast::http::verb::get, "/cancel/id={string}", handler})
+      .document("MTConnect WebServices Cancel Stream", "Cancels a streaming sample request")
+      .command("cancel");
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/cancel/id=12345");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_EQ(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+
+  auto acam = m_client->m_fields.find("Access-Control-Allow-Methods");
+  ASSERT_NE(m_client->m_fields.end(), acam);
+  EXPECT_EQ(allow->second, acam->second);
+
+  auto acah = m_client->m_fields.find("Access-Control-Allow-Headers");
+  ASSERT_NE(m_client->m_fields.end(), acah);
+
+  auto acma = m_client->m_fields.find("Access-Control-Max-Age");
+  ASSERT_NE(m_client->m_fields.end(), acma);
+  EXPECT_EQ("86400", acma->second);
+}
+
+TEST_F(HttpServerTest, should_handle_routings_with_just_a_regex)
+{
+  auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
+    ResponsePtr resp = make_unique<Response>(status::ok, "Done");
+    session->writeResponse(std::move(resp));
+    return true;
+  };
+
+  m_server->addRouting({boost::beast::http::verb::get, regex("/.+"), handler});
+  m_server->addRouting({http::verb::put, "/{device}?timestamp={timestamp}", handler});
+
+  start();
+  startClient();
+
+  m_client->spawnRequest(http::verb::options, "/file.xsd");
+  ASSERT_TRUE(m_client->m_done);
+  EXPECT_EQ(int(http::status::no_content), m_client->m_status);
+
+  auto allow = m_client->m_fields.find("Allow");
+  ASSERT_NE(m_client->m_fields.end(), allow);
+  EXPECT_NE(string::npos, allow->second.find("GET"));
+  EXPECT_NE(string::npos, allow->second.find("OPTIONS"));
+  EXPECT_NE(string::npos, allow->second.find("PUT"));
+  EXPECT_EQ(string::npos, allow->second.find("POST"));
+  EXPECT_EQ(string::npos, allow->second.find("DELETE"));
+
+  auto acam = m_client->m_fields.find("Access-Control-Allow-Methods");
+  ASSERT_NE(m_client->m_fields.end(), acam);
+  EXPECT_EQ(allow->second, acam->second);
+
+  auto acah = m_client->m_fields.find("Access-Control-Allow-Headers");
+  ASSERT_NE(m_client->m_fields.end(), acah);
+
+  auto acma = m_client->m_fields.find("Access-Control-Max-Age");
+  ASSERT_NE(m_client->m_fields.end(), acma);
+  EXPECT_EQ("86400", acma->second);
 }
 
 const string CertFile(TEST_RESOURCE_DIR "/user.crt");

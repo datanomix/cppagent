@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ namespace mtconnect {
 
     class Transform;
     using TransformPtr = std::shared_ptr<Transform>;
-    using TransformList = std::list<TransformPtr>;
+    using TransformList = std::vector<TransformPtr>;
 
     using ApplyDataItem = std::function<void(const DataItemPtr di)>;
     using EachDataItem = std::function<void(ApplyDataItem)>;
@@ -219,7 +219,7 @@ namespace mtconnect {
       }
       /// @brief Binds to the first position in the next list
       /// @param xform the transform
-      void firstAfter(TransformPtr xform) { m_next.emplace_front(xform); }
+      void firstAfter(TransformPtr xform) { m_next.insert(m_next.begin(), xform); }
       /// @brief Replace one transform with another
       ///
       /// Rebinds the new transform replacing the old transform

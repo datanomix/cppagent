@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/join.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/coroutine.hpp>
 #include <boost/beast.hpp>
@@ -26,6 +27,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/range/adaptor/transformed.hpp>
 #include <boost/tokenizer.hpp>
 
 #include <thread>
@@ -104,7 +106,7 @@ namespace mtconnect::sink::rest_sink {
     catch (exception &e)
     {
       LOG(fatal) << "Cannot start server: " << e.what();
-      std::exit(1);
+      throw FatalException(e.what());
     }
   }
 
@@ -122,6 +124,12 @@ namespace mtconnect::sink::rest_sink {
     {
       fail(ec, "Cannot open server socket");
       throw std::runtime_error(std::string("Cannot open server socket: ") + ec.message());
+    }
+    if (m_address.is_v6())
+    {
+      // Enable dual-stack by default. It will allow 0.0.0.0 if ::
+      m_acceptor.set_option(boost::asio::ip::v6_only(false), ec);
+      ec = {};  // not fatal if unsupported
     }
     m_acceptor.set_option(boost::asio::socket_base::reuse_address(true), ec);
     if (ec)
@@ -393,15 +401,7 @@ namespace mtconnect::sink::rest_sink {
         AutoJsonArray<T> ary(writer, "servers");
         {
           AutoJsonObject<T> obj(writer);
-
-          stringstream str;
-          if (m_tlsEnabled)
-            str << "https://";
-          else
-            str << "http://";
-
-          str << GetBestHostAddress(m_context, true) << ':' << m_port << '/';
-          obj.AddPairs("url", str.str());
+          obj.AddPairs("url", m_baseUrl);
         }
       }
       {
@@ -428,19 +428,82 @@ namespace mtconnect::sink::rest_sink {
   void Server::addSwaggerRoutings()
   {
     auto handler = [&](SessionPtr session, const RequestPtr request) -> bool {
-      auto pretty = *request->parameter<bool>("pretty");
+      auto json = request->m_accepts.find("json");
+      auto html = request->m_accepts.find("html");
+      if (html == string::npos || (json != string::npos && json < html))
+      {
+        auto pretty = *request->parameter<bool>("pretty");
 
-      StringBuffer output;
-      RenderJson(output, pretty, [this](auto &writer) { renderSwaggerResponse(writer); });
+        StringBuffer output;
+        RenderJson(output, pretty, [this](auto &writer) { renderSwaggerResponse(writer); });
 
-      session->writeResponse(
-          make_unique<Response>(status::ok, string(output.GetString()), "application/json"));
-
+        session->writeResponse(
+            make_unique<Response>(status::ok, string(output.GetString()), "application/json"));
+      }
+      else
+      {
+        string response = R"(<!DOCTYPE html>
+<html>
+  <head>
+    <title>MTConnect API</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css">
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+    <script>
+      SwaggerUIBundle({ url: '/swagger', dom_id: '#swagger-ui' });
+    </script>
+  </body>
+</html>
+)";
+        session->writeResponse(make_unique<Response>(status::ok, response, "text/html"));
+      }
       return true;
     };
 
     addRouting({boost::beast::http::verb::get, "/swagger?pretty={bool:false}", handler, true});
     // addRouting({boost::beast::http::verb::get, "/swagger.yaml", handler, true});
+  }
+
+  bool Server::handleOptionsRequest(SessionPtr session, const RequestPtr request)
+  {
+    using namespace boost;
+    using namespace adaptors;
+    set<http::verb> specificVerbs;
+    set<http::verb> catchAllVerbs;
+    for (const auto &r : m_routings)
+    {
+      if (!r.isSwagger() && r.matchesPath(request->m_path))
+      {
+        if (r.isCatchAll())
+          catchAllVerbs.insert(r.getVerb());
+        else
+          specificVerbs.insert(r.getVerb());
+      }
+    }
+
+    // If any specific route matched, use only those; otherwise fall back to catch-alls
+    auto &verbs = specificVerbs.empty() ? catchAllVerbs : specificVerbs;
+
+    // OPTIONS is always allowed
+    verbs.insert(http::verb::options);
+
+    // Build the Allow / Access-Control-Allow-Methods header value
+    string methods = algorithm::join(
+        verbs | transformed([](http::verb v) { return string(http::to_string(v)); }), ", ");
+
+    auto response = std::make_unique<Response>(status::no_content, "", "text/plain");
+    response->m_close = false;
+    response->m_fields.emplace_back("Allow", methods);
+    response->m_fields.emplace_back("Access-Control-Allow-Methods", methods);
+    response->m_fields.emplace_back("Access-Control-Allow-Headers",
+                                    "Content-Type, Accept, Accept-Encoding");
+    response->m_fields.emplace_back("Access-Control-Max-Age", "86400");
+
+    session->writeResponse(std::move(response));
+
+    return true;
   }
 
 }  // namespace mtconnect::sink::rest_sink

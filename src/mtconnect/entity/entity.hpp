@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,12 +44,12 @@ namespace mtconnect {
       PropertyKey(const char *s) : QName(s) {}
 
       /// @brief clears marks for this property
-      void clearMark() const { const_cast<PropertyKey *>(this)->m_mark = false; }
+      void clearMark() const { m_mark = false; }
       /// @brief sets the mark for this property
-      void setMark() const { const_cast<PropertyKey *>(this)->m_mark = true; }
+      void setMark() const { m_mark = true; }
 
       /// @brief allows factory to track required properties
-      bool m_mark {false};
+      mutable bool m_mark {false};
     };
 
     /// @brief properties are a map of PropertyKey to Value
@@ -209,7 +209,8 @@ namespace mtconnect {
       /// @return `VALUE` property
       Value &getValue()
       {
-        static Value null;
+        thread_local Value null;
+        null = std::monostate {};
         auto p = m_properties.find("VALUE");
         if (p != m_properties.end())
           return p->second;
@@ -260,7 +261,8 @@ namespace mtconnect {
       /// @returns a reference to the entity list. Returns an empty list if it does not exist.
       EntityList &getListProperty()
       {
-        static EntityList null;
+        thread_local EntityList null;
+        null.clear();
 
         auto p = m_properties.find("LIST");
         if (p != m_properties.end())
@@ -369,15 +371,25 @@ namespace mtconnect {
           return empty;
       }
 
+      /// @brief checks if two entity models are different–does a deep analysis
+      /// @param other the other entity to check
+      /// @return `true` if the entities are different
+      bool different(const Entity &other) const;
+
+      /// @brief cover method for entity comparison
+      /// @param other the other entity to check
+      /// @return `true` if the entities are different
+      bool different(const std::shared_ptr<Entity> other) const { return different(*other); }
+
       /// @brief compare two entities for equality
       /// @param other the other entity
       /// @return `true` if they have equal name and properties
-      bool operator==(const Entity &other) const;
+      bool operator==(const Entity &other) const { return !different(other); }
 
       /// @brief compare two entities for inequality
       /// @param other the other entity
       /// @return `true` if they have unequal name and properties
-      bool operator!=(const Entity &other) const { return !(*this == other); }
+      bool operator!=(const Entity &other) const { return different(other); }
 
       /// @brief update this entity to be the same as other
       /// @param other the other entity
@@ -398,7 +410,7 @@ namespace mtconnect {
         boost::uuids::detail::sha1 sha1;
         hash(sha1);
 
-        unsigned int digest[5];
+        unsigned char digest[20];
         sha1.get_digest(digest);
 
         char encoded[32];
@@ -441,7 +453,8 @@ namespace mtconnect {
 
       Value &getProperty_(const std::string &name)
       {
-        static Value noValue {std::monostate()};
+        thread_local Value noValue {std::monostate()};
+        noValue = std::monostate {};
         auto it = m_properties.find(name);
         if (it == m_properties.end())
           return noValue;
@@ -517,23 +530,23 @@ namespace mtconnect {
 
     inline bool operator!=(const Value &v1, const Value &v2) { return !(v1 == v2); }
 
-    inline bool Entity::operator==(const Entity &other) const
+    inline bool Entity::different(const Entity &other) const
     {
       if (m_name != other.m_name)
-        return false;
+        return true;
 
       if (m_properties.size() != other.m_properties.size())
-        return false;
+        return true;
 
       for (auto it1 = m_properties.cbegin(), it2 = other.m_properties.cbegin();
            it1 != m_properties.cend(); it1++, it2++)
       {
         if (it1->first != it2->first || it1->second != it2->second)
         {
-          return false;
+          return true;
         }
       }
-      return true;
+      return false;
     }
 
     /// @brief variant visitor to merge two entities
@@ -704,7 +717,86 @@ namespace mtconnect {
         }
       }
 
+      for (auto &key : removed)
+      {
+        m_properties.erase(key);
+      }
+
       return changed;
     }
+
+    /// @brief variant visitor to output Value to stream
+    struct StreamOutputVisitor
+    {
+      /// @brief constructor
+      /// @param os the output stream
+      StreamOutputVisitor(std::ostream &os) : m_os(os) {}
+
+      void operator()(const std::monostate &) { m_os << "null"; }
+
+      void operator()(const EntityPtr &entity)
+      {
+        const auto &id = entity->getIdentity();
+        m_os << "Entity(" << entity->getName() << ":";
+        StreamOutputVisitor visitor(m_os);
+        std::visit(visitor, id);
+        m_os << ")";
+      }
+
+      void operator()(const EntityList &list)
+      {
+        m_os << "EntityList[";
+        for (auto e : list)
+        {
+          StreamOutputVisitor visitor(m_os);
+          visitor(e);
+          m_os << " ";
+        }
+        m_os << "]";
+      }
+
+      void operator()(const DataSet &dataSet) { m_os << "DataSet(" << dataSet.size() << " items)"; }
+
+      void operator()(const QName &qname) { m_os << qname.str(); }
+
+      void operator()(const Vector &vec)
+      {
+        m_os << "Vector[";
+        for (const auto &v : vec)
+        {
+          m_os << v << " ";
+        }
+        m_os << "]";
+      }
+
+      template <typename T>
+      void operator()(const T &value)
+      {
+        m_os << value;
+      }
+
+      std::ostream &m_os;
+    };
+
+    /// @brief output operator for Value
+    /// @param os the output stream
+    /// @param v the Value to output
+    inline std::ostream &operator<<(std::ostream &os, const Value &v)
+    {
+      StreamOutputVisitor visitor(os);
+      std::visit(visitor, v);
+      return os;
+    }
+
+    /// @brief output operator for Value
+    /// @param os the output stream
+    /// @param v the Value to output
+    inline std::ostream &operator<<(std::ostream &os, const EntityPtr &v)
+    {
+      StreamOutputVisitor visitor(os);
+      visitor(v);
+      return os;
+    }
+
   }  // namespace entity
 }  // namespace mtconnect

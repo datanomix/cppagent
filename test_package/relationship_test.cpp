@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,7 +68,7 @@ protected:
   std::unique_ptr<AgentTestHelper> m_agentTestHelper;
 };
 
-TEST_F(RelationshipTest, ParseDeviceAndComponentRelationships)
+TEST_F(RelationshipTest, component_device_and_asset_relationships_are_parsed_with_attributes)
 {
   ASSERT_NE(nullptr, m_component);
 
@@ -115,7 +115,7 @@ TEST_F(RelationshipTest, ParseDeviceAndComponentRelationships)
 #define CONFIGURATION_PATH "//m:Rotary[@id='c']/m:Configuration"
 #define RELATIONSHIPS_PATH CONFIGURATION_PATH "/m:Relationships"
 
-TEST_F(RelationshipTest, XmlPrinting)
+TEST_F(RelationshipTest, relationships_are_printed_with_correct_attributes_in_xml)
 {
   {
     PARSE_XML_RESPONSE("/probe");
@@ -154,7 +154,7 @@ TEST_F(RelationshipTest, XmlPrinting)
   }
 }
 
-TEST_F(RelationshipTest, JsonPrinting)
+TEST_F(RelationshipTest, relationships_are_printed_with_correct_fields_in_json)
 {
   {
     PARSE_JSON_RESPONSE("/probe");

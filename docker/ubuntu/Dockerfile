@@ -28,7 +28,7 @@
 
 # base image - ubuntu has amd64, arm64 etc.
 # 22.04 is the current long term support release, maintained until 2025-04.
-FROM ubuntu:22.04 AS os
+FROM ubuntu:24.04 AS os
 
 # tzinfo hangs without this
 ARG DEBIAN_FRONTEND='noninteractive'
@@ -46,13 +46,12 @@ ARG CONAN_CPU_COUNT=2
 ARG WITH_RUBY='True'
 
 # set some variables
-ENV PATH="$HOME/venv3.9/bin:$PATH"
 ENV CONAN_PROFILE='/root/agent/cppagent/conan/profiles/docker'
 
 # update os and add dependencies
 # note: Dockerfiles run as root by default, so don't need sudo
-RUN  apt-get update \
-  && apt-get install -y \
+RUN  apt clean && apt update \
+  && apt install -y \
        autoconf \
        automake \
        build-essential \
@@ -63,7 +62,7 @@ RUN  apt-get update \
        rake \
        ruby \
   && rm -rf /var/lib/apt/lists/* \
-  && pip install conan
+  && pip install --break-system-packages --root-user-action ignore conan 
 
 # make an agent directory and cd into it
 WORKDIR /root/agent
@@ -72,7 +71,7 @@ WORKDIR /root/agent
 COPY . cppagent
 
 ARG WITH_TESTS=false
-ARG WITH_TESTS_ARG=argument
+ARG WITH_TESTS_ARG=
 
 # Build and optionally test
 RUN  if [ -z "$WITH_TESTS" ] || [ "$WITH_TESTS" = "false" ]; then \
@@ -91,7 +90,7 @@ RUN  if [ -z "$WITH_TESTS" ] || [ "$WITH_TESTS" = "false" ]; then \
        -o cpack_name=dist \
        -o cpack_generator=TGZ \
        -pr "$CONAN_PROFILE" \
-       "${WITH_TESTS_ARG}" \
+       ${WITH_TESTS_ARG} \
   && tar xf dist.tar.gz \
   && rm dist.tar.gz
 
@@ -109,8 +108,8 @@ LABEL author='mtconnect' description='MTConnect C++ Agent'
 # change to a new non-root user for better security.
 # this also adds the user to a group with the same name.
 # --create-home creates a home folder, ie /home/<username>
-ARG UID=1000
-ARG GID=1000
+ARG UID=1001
+ARG GID=1001
 
 RUN  groupadd \
      --gid $GID \

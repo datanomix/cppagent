@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include "mtconnect/pipeline/shdr_token_mapper.hpp"
 #include "mtconnect/pipeline/shdr_tokenizer.hpp"
 #include "mtconnect/pipeline/timestamp_extractor.hpp"
+#include "mtconnect/printer/json_printer.hpp"
 #include "mtconnect/printer/xml_printer.hpp"
 #include "server.hpp"
 
@@ -71,11 +72,28 @@ namespace mtconnect {
       m_server = make_unique<Server>(context, m_options);
       m_server->setErrorFunction(boost::bind(&RestService::writeErrorResponse, this, _1, _2));
 
+      auto base = GetOption<string>(options, config::ExternalBaseUrl);
+      if (!base)
+      {
+        auto ip = GetOption<string>(options, config::ServerIp);
+        if (!ip || *ip == "0.0.0.0")
+          ip = GetBestHostAddress(m_context, true);
+        string protocol;
+        if (m_server->isTlsEnabled())
+          protocol = "https://";
+        else
+          protocol = "http://";
+        base = protocol + *ip + ":" + to_string(m_server->getPort()) + '/';
+      }
+      m_baseUrl = *base;
+      m_server->setBaseUrl(m_baseUrl);
+
       auto xmlPrinter = dynamic_cast<XmlPrinter *>(m_sinkContract->getPrinter("xml"));
+      auto jsonPrinter = dynamic_cast<JsonPrinter *>(m_sinkContract->getPrinter("json"));
 
       // Files served by the Agent... allows schema files to be served by
       // agent.
-      loadFiles(xmlPrinter, config);
+      loadFiles(xmlPrinter, jsonPrinter, config);
 
       // Load namespaces, allow for local file system serving as well.
       loadNamespace(config, "DevicesNamespaces", xmlPrinter, &XmlPrinter::addDevicesNamespace);
@@ -83,6 +101,13 @@ namespace mtconnect {
       loadNamespace(config, "AssetsNamespaces", xmlPrinter, &XmlPrinter::addAssetsNamespace);
       loadNamespace(config, "ErrorNamespaces", xmlPrinter, &XmlPrinter::addErrorNamespace);
 
+      // Explicitly load the json schema files. Can be used for specifying draft 4 schemas
+      loadJsonSchema(config, "DevicesJsonSchema", jsonPrinter, &JsonPrinter::setDevicesSchema);
+      loadJsonSchema(config, "StreamsJsonSchema", jsonPrinter, &JsonPrinter::setStreamsSchema);
+      loadJsonSchema(config, "AssetsJsonSchema", jsonPrinter, &JsonPrinter::setAssetsSchema);
+      loadJsonSchema(config, "ErrorJsonSchema", jsonPrinter, &JsonPrinter::setErrorSchema);
+
+      // Load the XML style sheets
       loadStyle(config, "DevicesStyle", xmlPrinter, &XmlPrinter::setDevicesStyle);
       loadStyle(config, "StreamsStyle", xmlPrinter, &XmlPrinter::setStreamStyle);
       loadStyle(config, "AssetsStyle", xmlPrinter, &XmlPrinter::setAssetsStyle);
@@ -174,7 +199,40 @@ namespace mtconnect {
       }
     }
 
-    void RestService::loadFiles(XmlPrinter *xmlPrinter, const ptree &tree)
+    // Configuration
+    void RestService::loadJsonSchema(const ptree &tree, const char *schemaType,
+                                     JsonPrinter *jsonPrinter, SchemaFunction callback)
+    {
+      // Load namespaces, allow for local file system serving as well.
+      auto schema = tree.get_child_optional(schemaType);
+      if (schema)
+      {
+        auto location = schema->get_optional<string>("Location");
+        if (!location)
+        {
+          LOG(warning) << "Json schema for " << schemaType << " must have a Location";
+          return;
+        }
+        if (!location->starts_with("http://") && !location->starts_with("https://"))
+        {
+          location = externalUrl(*location);
+          auto path = schema->get_optional<string>("Path");
+          if (path && !location->empty())
+          {
+            auto xns = m_fileCache.registerFile(*location, *path, m_schemaVersion);
+            if (!xns)
+            {
+              LOG(debug) << "Location " << *location
+                         << " did not match MTConnect schema pattern for path " << *path;
+            }
+          }
+
+          (jsonPrinter->*callback)(*location);
+        }
+      }
+    }
+
+    void RestService::loadFiles(XmlPrinter *xmlPrinter, JsonPrinter *jsonPrinter, const ptree &tree)
     {
       auto files = tree.get_child_optional("Files");
       if (files)
@@ -201,21 +259,34 @@ namespace mtconnect {
               auto namespaces = m_fileCache.registerFiles(*location, *resolved, m_schemaVersion);
               for (auto &ns : namespaces)
               {
-                if (ns.first.find("Devices") != string::npos)
+                string urn = "urn:mtconnect.org:MTConnect" + ns.m_doc + ":" + m_schemaVersion;
+                if (ns.m_doc == "Devices")
                 {
-                  xmlPrinter->addDevicesNamespace(ns.first, ns.second, "m");
+                  if (ns.m_type == SchemaType::XSD)
+                    xmlPrinter->addDevicesNamespace(urn, ns.m_uri, "m");
+                  else
+                    jsonPrinter->setDevicesSchema(externalUrl(ns.m_uri));
                 }
-                else if (ns.first.find("Streams") != string::npos)
+                else if (ns.m_doc == "Streams")
                 {
-                  xmlPrinter->addStreamsNamespace(ns.first, ns.second, "m");
+                  if (ns.m_type == SchemaType::XSD)
+                    xmlPrinter->addStreamsNamespace(urn, ns.m_uri, "m");
+                  else
+                    jsonPrinter->setStreamsSchema(externalUrl(ns.m_uri));
                 }
-                else if (ns.first.find("Assets") != string::npos)
+                else if (ns.m_doc == "Assets")
                 {
-                  xmlPrinter->addAssetsNamespace(ns.first, ns.second, "m");
+                  if (ns.m_type == SchemaType::XSD)
+                    xmlPrinter->addAssetsNamespace(urn, ns.m_uri, "m");
+                  else
+                    jsonPrinter->setAssetsSchema(externalUrl(ns.m_uri));
                 }
-                else if (ns.first.find("Error") != string::npos)
+                else if (ns.m_doc == "Error")
                 {
-                  xmlPrinter->addErrorNamespace(ns.first, ns.second, "m");
+                  if (ns.m_type == SchemaType::XSD)
+                    xmlPrinter->addErrorNamespace(urn, ns.m_uri, "m");
+                  else
+                    jsonPrinter->setErrorSchema(externalUrl(ns.m_uri));
                 }
               }
             }
@@ -366,28 +437,24 @@ namespace mtconnect {
           if (!host.empty())
           {
             // Check if it is a simple numeric address
-            using br = ip::resolver_base;
             boost::system::error_code ec;
             auto addr = ip::make_address(host, ec);
             if (ec)
             {
               ip::tcp::resolver resolver(m_context);
-              ip::tcp::resolver::query query(host, "0", br::v4_mapped);
-
-              auto it = resolver.resolve(query, ec);
+              auto results = resolver.resolve(host, "0", ip::resolver_base::flags::v4_mapped, ec);
               if (ec)
               {
                 cout << "Failed to resolve " << host << ": " << ec.message() << endl;
               }
               else
               {
-                ip::tcp::resolver::iterator end;
-                for (; it != end; it++)
+                for (const auto &res : results)
                 {
-                  const auto &addr = it->endpoint().address();
-                  if (!addr.is_multicast() && !addr.is_unspecified())
+                  const auto &a = res.endpoint().address();
+                  if (!a.is_multicast() && !a.is_unspecified())
                   {
-                    m_server->allowPutFrom(addr.to_string());
+                    m_server->allowPutFrom(a.to_string());
                   }
                 }
               }
@@ -477,7 +544,7 @@ namespace mtconnect {
         auto format = request->parameter<string>("format");
         auto printer = getPrinter(request->m_accepts, format);
 
-        if (device && !ends_with(request->m_path, string("probe")) &&
+        if (device && !request->m_path.ends_with("probe"sv) &&
             m_sinkContract->findDeviceByUUIDorName(*device) == nullptr)
           return false;
 
@@ -525,23 +592,8 @@ namespace mtconnect {
     void RestService::createAssetRoutings()
     {
       using namespace rest_sink;
-      auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
-        auto removed = *request->parameter<bool>("removed");
-        auto count = *request->parameter<int32_t>("count");
-        auto pretty = request->parameter<bool>("pretty").value_or(false);
-        auto format = request->parameter<string>("format");
-        auto printer = getPrinter(request->m_accepts, format);
 
-        request->m_request = "MTConnectAssets";
-
-        respond(session,
-                assetRequest(printer, count, removed, request->parameter<string>("type"),
-                             request->parameter<string>("device"), pretty, request->m_requestId),
-                request->m_requestId);
-        return true;
-      };
-
-      auto idHandler = [&](SessionPtr session, RequestPtr request) -> bool {
+      auto idHandler = [this](SessionPtr session, RequestPtr request) -> bool {
         auto asset = request->parameter<string>("assetIds");
         request->m_request = "MTConnectAssets";
 
@@ -568,17 +620,41 @@ namespace mtconnect {
         return true;
       };
 
+      auto handler = [this, idHandler](SessionPtr session, RequestPtr request) -> bool {
+        auto assets = request->parameter<string>("assetIds");
+        if (assets)
+        {
+          return idHandler(session, request);
+        }
+
+        auto removed = *request->parameter<bool>("removed");
+        auto count = *request->parameter<int32_t>("count");
+        auto pretty = request->parameter<bool>("pretty").value_or(false);
+        auto format = request->parameter<string>("format");
+        auto printer = getPrinter(request->m_accepts, format);
+
+        request->m_request = "MTConnectAssets";
+
+        respond(session,
+                assetRequest(printer, count, removed, request->parameter<string>("type"),
+                             request->parameter<string>("device"), pretty, request->m_requestId),
+                request->m_requestId);
+        return true;
+      };
+
       string qp(
           "type={string}&removed={bool:false}&"
           "count={integer:100}&device={string}&pretty={bool:false}&format={string}");
       m_server->addRouting({boost::beast::http::verb::get, "/assets?" + qp, handler})
           .document("MTConnect assets request", "Returns up to `count` assets");
+      m_server->addRouting({boost::beast::http::verb::get, "/{device}/assets?" + qp, handler})
+          .document("MTConnect assets request", "Returns up to `count` assets for deivce `device`")
+          .command("assets");
       m_server->addRouting({boost::beast::http::verb::get, "/asset?" + qp, handler})
           .document("MTConnect asset request", "Returns up to `count` assets");
-      m_server->addRouting({boost::beast::http::verb::get, "/{device}/assets?" + qp, handler})
-          .document("MTConnect assets request", "Returns up to `count` assets for deivce `device`");
       m_server->addRouting({boost::beast::http::verb::get, "/{device}/asset?" + qp, handler})
-          .document("MTConnect asset request", "Returns up to `count` assets for deivce `device`");
+          .document("MTConnect asset request", "Returns up to `count` assets for deivce `device`")
+          .command("asset");
       m_server->addRouting({boost::beast::http::verb::get, "/assets/{assetIds}", idHandler})
           .document(
               "MTConnect assets request",
@@ -731,8 +807,12 @@ namespace mtconnect {
     void RestService::createSampleRoutings()
     {
       using namespace rest_sink;
+
       auto handler = [&](SessionPtr session, RequestPtr request) -> bool {
         request->m_request = "MTConnectStreams";
+
+        if (!request->parameter<int32_t>("count"))
+          request->m_parameters["count"] = 100;
 
         auto interval = request->parameter<int32_t>("interval");
         if (interval)
@@ -963,7 +1043,7 @@ namespace mtconnect {
         }
         else
         {
-          LOG(debug) << "Sink close when failing sample respone: " << message;
+          LOG(debug) << "Sink close when failing sample response: " << message;
         }
       }
 
@@ -1229,7 +1309,7 @@ namespace mtconnect {
               boost::asio::bind_executor(
                   m_strand,
                   [this, asyncResponse]() {
-                    asyncResponse->m_timer.expires_from_now(asyncResponse->getInterval());
+                    asyncResponse->m_timer.expires_after(asyncResponse->getInterval());
                     asyncResponse->m_timer.async_wait(boost::asio::bind_executor(
                         m_strand,
                         boost::bind(&RestService::streamNextCurrent, this, asyncResponse, _1)));
@@ -1415,12 +1495,7 @@ namespace mtconnect {
       Timestamp ts;
       if (time)
       {
-        istringstream in(*time);
-        in >> std::setw(6) >> date::parse("%FT%T", ts);
-        if (!in.good())
-        {
-          ts = chrono::system_clock::now();
-        }
+        ts = parseTimestamp(*time);
       }
       else
       {
@@ -1477,7 +1552,7 @@ namespace mtconnect {
       {
         for (const auto &p : m_sinkContract->getPrinters())
         {
-          if (ends_with(accept, p.first))
+          if (accept.ends_with(p.first))
             return p.first;
         }
       }

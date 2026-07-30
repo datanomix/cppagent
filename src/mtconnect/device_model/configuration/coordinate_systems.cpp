@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,8 @@ namespace mtconnect {
                             Requirement("Rotation", ValueType::VECTOR, 3, false),
                             Requirement("TranslationDataSet", ValueType::DATA_SET, false),
                             Requirement("RotationDataSet", ValueType::DATA_SET, false)});
+          transformation->setOrder(
+              {"Translation", "TranslationDataSet", "Rotation", "RotationDataSet"});
 
           auto coordinateSystem = make_shared<Factory>(Requirements {
               Requirement("id", true), Requirement("name", false), Requirement("nativeName", false),

@@ -43,28 +43,33 @@ class AsyncContextTest : public testing::Test
 {
 };
 
-TEST_F(AsyncContextTest, worker_survives_a_thrown_handler)
+TEST_F(AsyncContextTest, a_thrown_handler_is_fatal_and_stops_the_context)
 {
-  // Fix #3: a handler that throws must not kill the io_context worker. With a
-  // single worker thread handlers run FIFO on that one thread; without the fix
-  // the throwing handler tears down the worker and the second handler never
-  // runs. With the fix the worker catches, resumes run(), and processes it.
+  // An unhandled exception in a completion handler is fatal: the worker logs it,
+  // stops the context, and start() returns a non-zero exit code. The service
+  // layer propagates that code so the supervisor (systemd Restart=always)
+  // restarts the agent rather than leaving it up-but-not-serving.
   AsyncContext ctx;
 
   boost::asio::post(ctx.get(), [] { throw std::runtime_error("boom"); });
 
-  std::atomic<bool> secondRan {false};
-  boost::asio::post(ctx.get(), [&] { secondRan = true; });
+  // start() blocks until the context stops, so drive it on a separate thread.
+  std::atomic<bool> finished {false};
+  int exitCode = 0;
+  std::thread t([&] {
+    exitCode = ctx.start();
+    finished = true;
+  });
 
-  // start() blocks in its own run loop, so drive it on a separate thread.
-  std::thread t([&] { ctx.start(); });
-
-  // Poll up to ~2s so the test cannot hang even if the fix regresses.
-  for (int i = 0; i < 200 && !secondRan; ++i)
+  // Poll up to ~2s so the test cannot hang if the fatal-stop path regresses.
+  for (int i = 0; i < 200 && !finished; ++i)
     std::this_thread::sleep_for(10ms);
 
-  ctx.stop();
+  EXPECT_TRUE(finished);  // the throwing handler stopped the context
+  if (!finished)
+    ctx.stop();  // rescue so join() cannot block forever
   t.join();
 
-  EXPECT_TRUE(secondRan);
+  EXPECT_EQ(1, exitCode);
+  EXPECT_FALSE(ctx.isRunning());
 }

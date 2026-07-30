@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
   return RUN_ALL_TESTS();
 }
 
-Properties operator"" _value(const char *value, size_t s)
+Properties operator""_value(const char *value, size_t s)
 {
   return Properties {{"VALUE", string(value)}};
 }

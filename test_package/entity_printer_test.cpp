@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,7 +87,7 @@ protected:
   std::unique_ptr<printer::XmlWriter> m_writer;
 };
 
-TEST_F(EntityPrinterTest, TestParseSimpleDocument)
+TEST_F(EntityPrinterTest, prints_simple_entity_with_file_properties_back_to_xml)
 {
   auto root = createFileArchetypeFactory();
 
@@ -112,7 +112,7 @@ TEST_F(EntityPrinterTest, TestParseSimpleDocument)
   ASSERT_EQ(doc, m_writer->getContent());
 }
 
-TEST_F(EntityPrinterTest, TestFileArchetypeWithDescription)
+TEST_F(EntityPrinterTest, prints_file_archetype_with_description_element)
 {
   auto root = createFileArchetypeFactory();
 
@@ -138,7 +138,7 @@ TEST_F(EntityPrinterTest, TestFileArchetypeWithDescription)
   ASSERT_EQ(doc, m_writer->getContent());
 }
 
-TEST_F(EntityPrinterTest, TestRecursiveEntityLists)
+TEST_F(EntityPrinterTest, prints_recursive_entity_lists_as_nested_xml)
 {
   auto component = make_shared<Factory>(Requirements {
       Requirement("id", true),
@@ -186,7 +186,7 @@ TEST_F(EntityPrinterTest, TestRecursiveEntityLists)
   ASSERT_EQ(doc, m_writer->getContent());
 }
 
-TEST_F(EntityPrinterTest, TestEntityOrder)
+TEST_F(EntityPrinterTest, prints_entity_children_in_declared_order)
 {
   auto component = make_shared<Factory>(Requirements {
       Requirement("id", true),
@@ -244,7 +244,7 @@ TEST_F(EntityPrinterTest, TestEntityOrder)
   ASSERT_EQ(expected, m_writer->getContent());
 }
 
-TEST_F(EntityPrinterTest, TestRawContent)
+TEST_F(EntityPrinterTest, prints_raw_content_element_without_escaping)
 {
   auto definition =
       make_shared<Factory>(Requirements({Requirement("format", false), Requirement("RAW", true)}));
@@ -331,12 +331,12 @@ TEST_F(EntityPrinterTest, should_honor_include_hidden_parameter)
   entity::XmlPrinter printer(false);
   printer.print(*m_writer, entity, {});
 
-  ASSERT_EQ(R"(<Device id="DFYX7ls4d4to2Lhb" name="foo" uuid="xxx">
+  ASSERT_EQ(R"(<Device id="AdWDIt3OFtbuNhoe" name="foo" uuid="xxx">
   <Components>
-    <Systems id="_cNZEyq5kGkgppmh">
+    <Systems id="ZA2H50HmqkxmmoKk">
       <Components>
-        <Electric id="Pm2JhGKEeAYzVA8c"/>
-        <Heating id="culKrBObwYWb6x0g"/>
+        <Electric id="hIltPgZ4hGIcD1Qz"/>
+        <Heating id="rErpcoXBmxMgHeub"/>
       </Components>
     </Systems>
   </Components>
@@ -348,12 +348,12 @@ TEST_F(EntityPrinterTest, should_honor_include_hidden_parameter)
   entity::XmlPrinter printer2(true);
   printer2.print(*m_writer, entity, {});
 
-  ASSERT_EQ(R"(<Device id="DFYX7ls4d4to2Lhb" name="foo" originalId="d1" uuid="xxx">
+  ASSERT_EQ(R"(<Device id="AdWDIt3OFtbuNhoe" name="foo" originalId="d1" uuid="xxx">
   <Components>
-    <Systems id="_cNZEyq5kGkgppmh" originalId="s1">
+    <Systems id="ZA2H50HmqkxmmoKk" originalId="s1">
       <Components>
-        <Electric id="Pm2JhGKEeAYzVA8c" originalId="e1"/>
-        <Heating id="culKrBObwYWb6x0g" originalId="h1"/>
+        <Electric id="hIltPgZ4hGIcD1Qz" originalId="e1"/>
+        <Heating id="rErpcoXBmxMgHeub" originalId="h1"/>
       </Components>
     </Systems>
   </Components>

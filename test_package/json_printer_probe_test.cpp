@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,7 +82,7 @@ protected:
   std::unique_ptr<printer::XmlPrinter> m_xmlPrinter;
 };
 
-TEST_F(JsonPrinterProbeTest, DeviceRootAndDescription)
+TEST_F(JsonPrinterProbeTest, device_root_and_description_are_printed_with_header_attributes)
 {
   m_printer->setSenderName("MachineXXX");
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
@@ -117,7 +117,7 @@ TEST_F(JsonPrinterProbeTest, DeviceRootAndDescription)
             device2.at("/Description/value"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, TopLevelDataItems)
+TEST_F(JsonPrinterProbeTest, top_level_data_items_are_printed_with_type_and_category)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -150,7 +150,7 @@ TEST_F(JsonPrinterProbeTest, TopLevelDataItems)
   ASSERT_EQ(string("f2df7550"), remove.at("/DataItem/id"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, SubComponents)
+TEST_F(JsonPrinterProbeTest, sub_components_are_printed_with_ids_and_data_items)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -189,7 +189,7 @@ TEST_F(JsonPrinterProbeTest, SubComponents)
   ASSERT_EQ(string("ACTUAL"), ss.at("/subType"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, DataItemConstraints)
+TEST_F(JsonPrinterProbeTest, data_item_constraints_are_printed_with_values_and_limits)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -219,7 +219,7 @@ TEST_F(JsonPrinterProbeTest, DataItemConstraints)
   ASSERT_EQ(7000.0, max.get<double>());
 }
 
-TEST_F(JsonPrinterProbeTest, DataItemSource)
+TEST_F(JsonPrinterProbeTest, data_item_source_contains_referenced_data_item_id)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   // cout << "\n" << doc << endl;
@@ -235,7 +235,7 @@ TEST_F(JsonPrinterProbeTest, DataItemSource)
   ASSERT_EQ(string("taa7a0f0"), amp.at("/Source/dataItemId"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, InitialValue)
+TEST_F(JsonPrinterProbeTest, initial_value_is_printed_in_data_item)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -249,7 +249,7 @@ TEST_F(JsonPrinterProbeTest, InitialValue)
   ASSERT_EQ("1", count.at("/DataItem/InitialValue"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, DataItemFilters)
+TEST_F(JsonPrinterProbeTest, data_item_filters_are_printed_with_type_and_value)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -278,7 +278,7 @@ TEST_F(JsonPrinterProbeTest, DataItemFilters)
   ASSERT_EQ(10.0, filter2.at("/Filter/value"_json_pointer).get<double>());
 }
 
-TEST_F(JsonPrinterProbeTest, Composition)
+TEST_F(JsonPrinterProbeTest, compositions_are_printed_with_name_type_and_id)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -298,7 +298,7 @@ TEST_F(JsonPrinterProbeTest, Composition)
   ASSERT_EQ(string("a7973930"), comp2.at("/id"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, Configuration)
+TEST_F(JsonPrinterProbeTest, configuration_contains_sensor_configuration_with_channels)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -320,7 +320,7 @@ TEST_F(JsonPrinterProbeTest, Configuration)
             config.at("/Channels/0/Channel/CalibrationDate"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, PrintDeviceMTConnectVersion)
+TEST_F(JsonPrinterProbeTest, device_mtconnect_version_is_printed_in_probe)
 {
   auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
   auto jdoc = json::parse(doc);
@@ -330,7 +330,7 @@ TEST_F(JsonPrinterProbeTest, PrintDeviceMTConnectVersion)
   ASSERT_EQ(string("1.7"), device.at("/mtconnectVersion"_json_pointer).get<string>());
 }
 
-TEST_F(JsonPrinterProbeTest, PrintDataItemRelationships)
+TEST_F(JsonPrinterProbeTest, data_item_relationships_are_printed_with_type_and_id_ref)
 {
   auto server = std::make_unique<sink::rest_sink::Server>(m_agentTestHelper->m_ioContext);
   auto cache = std::make_unique<sink::rest_sink::FileCache>();
@@ -355,14 +355,15 @@ TEST_F(JsonPrinterProbeTest, PrintDataItemRelationships)
 
   auto dir1 = load.at("/Relationships/0"_json_pointer);
   ASSERT_TRUE(dir1.is_object());
-  ASSERT_EQ(string("archie"), dir1.at("/DataItemRelationship/name"_json_pointer));
-  ASSERT_EQ(string("LIMIT"), dir1.at("/DataItemRelationship/type"_json_pointer));
-  ASSERT_EQ(string("xlcpl"), dir1.at("/DataItemRelationship/idRef"_json_pointer));
+  ASSERT_EQ(string("archie"), dir1.at("/DataItemRelationship/name"_json_pointer).get<string>());
+  ASSERT_EQ(string("LIMIT"), dir1.at("/DataItemRelationship/type"_json_pointer).get<string>());
+  ASSERT_EQ(string("xlcpl"), dir1.at("/DataItemRelationship/idRef"_json_pointer).get<string>());
 
   auto dir2 = load.at("/Relationships/1"_json_pointer);
   ASSERT_TRUE(dir2.is_object());
-  ASSERT_EQ(string("LIMIT"), dir2.at("/SpecificationRelationship/type"_json_pointer));
-  ASSERT_EQ(string("spec1"), dir2.at("/SpecificationRelationship/idRef"_json_pointer));
+  ASSERT_EQ(string("LIMIT"), dir2.at("/SpecificationRelationship/type"_json_pointer).get<string>());
+  ASSERT_EQ(string("spec1"),
+            dir2.at("/SpecificationRelationship/idRef"_json_pointer).get<string>());
 
   auto limits = linear.at("/DataItems/5/DataItem"_json_pointer);
   ASSERT_TRUE(load.is_object());
@@ -370,9 +371,10 @@ TEST_F(JsonPrinterProbeTest, PrintDataItemRelationships)
 
   auto dir3 = limits.at("/Relationships/0"_json_pointer);
   ASSERT_TRUE(dir3.is_object());
-  ASSERT_EQ(string("bob"), dir3.at("/DataItemRelationship/name"_json_pointer));
-  ASSERT_EQ(string("OBSERVATION"), dir3.at("/DataItemRelationship/type"_json_pointer));
-  ASSERT_EQ(string("xlc"), dir3.at("/DataItemRelationship/idRef"_json_pointer));
+  ASSERT_EQ(string("bob"), dir3.at("/DataItemRelationship/name"_json_pointer).get<string>());
+  ASSERT_EQ(string("OBSERVATION"),
+            dir3.at("/DataItemRelationship/type"_json_pointer).get<string>());
+  ASSERT_EQ(string("xlc"), dir3.at("/DataItemRelationship/idRef"_json_pointer).get<string>());
 }
 
 TEST_F(JsonPrinterProbeTest, version_2_with_multiple_devices)
@@ -395,4 +397,13 @@ TEST_F(JsonPrinterProbeTest, version_2_with_multiple_devices)
 
   ASSERT_EQ("device-1", device.at("/0/uuid"_json_pointer));
   ASSERT_EQ("device-2", device.at("/1/uuid"_json_pointer));
+}
+
+TEST_F(JsonPrinterProbeTest, devices_schema_url_is_set_in_document_when_configured)
+{
+  m_printer->setDevicesSchema("https://example.org/MTConnectDevices_2.0.schema.json");
+  auto doc = m_printer->printProbe(123, 9999, 1, 1024, 10, m_devices);
+  auto jdoc = json::parse(doc);
+  ASSERT_EQ("https://example.org/MTConnectDevices_2.0.schema.json",
+            jdoc.at("/$schema"_json_pointer).get<string>());
 }

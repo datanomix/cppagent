@@ -1,6 +1,6 @@
 
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,9 +45,9 @@ namespace mtconnect::source::adapter::agent_adapter {
 
     /// @brief Get a shared pointer to this
     /// @return shared pointer to this
-    shared_ptr<HttpSession> getptr()
+    std::shared_ptr<HttpSession> getptr()
     {
-      return static_pointer_cast<HttpSession>(shared_from_this());
+      return std::static_pointer_cast<HttpSession>(shared_from_this());
     }
 
     /// @brief Get the boost asio tcp stream
@@ -75,7 +75,7 @@ namespace mtconnect::source::adapter::agent_adapter {
       if (!m_request)
       {
         m_stream.close();
-        LOG(error) << "Connected and no reqiest";
+        LOG(error) << "Connected and no request";
         return failed(source::make_error_code(ErrorCode::RETRY_REQUEST), "connect");
       }
 

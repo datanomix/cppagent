@@ -1,5 +1,5 @@
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,7 +67,7 @@ protected:
   std::unique_ptr<AgentTestHelper> m_agentTestHelper;
 };
 
-TEST_F(FileAssetTest, TestMinmalArchetype)
+TEST_F(FileAssetTest, minimal_file_archetype_is_parsed)
 {
   const auto doc =
       R"DOC(<FileArchetype applicationCategory="PROCESS" applicationType="INSTRUCTIONS" assetId="F1" mediaType="application/json" name="flickus.json">
@@ -116,7 +116,7 @@ TEST_F(FileAssetTest, TestMinmalArchetype)
   ASSERT_EQ(content, doc);
 }
 
-TEST_F(FileAssetTest, TestMinmalFile)
+TEST_F(FileAssetTest, minimal_file_asset_is_parsed)
 {
   const auto doc =
       R"DOC(<File applicationCategory="PROCESS" applicationType="INSTRUCTIONS" assetId="F1" mediaType="application/json" name="flickus.json" size="1024" state="PRODUCTION" versionId="11.0">

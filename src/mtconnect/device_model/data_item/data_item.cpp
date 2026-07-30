@@ -1,6 +1,6 @@
 //
 //
-// Copyright Copyright 2009-2024, AMT – The Association For Manufacturing Technology (“AMT”)
+// Copyright Copyright 2009-2025, AMT – The Association For Manufacturing Technology (“AMT”)
 // All rights reserved.
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -130,7 +130,7 @@ namespace mtconnect {
       auto &category = get<string>("category");
 
       auto units = maybeGet<string>("units");
-      if (units && ends_with(*units, "3D"))
+      if (units && units->ends_with("3D"))
         m_specialClass = THREE_SPACE_CLS;
 
       if (category == "SAMPLE")
@@ -244,12 +244,19 @@ namespace mtconnect {
       {
         if (m_specialClass == THREE_SPACE_CLS)
           m_key += ":3D";
-        else if (m_category == EVENT && hasProperty("units"))
+        else if (m_category == EVENT)
         {
-          if (this->get<string>("units") == "COUNT")
+          if (hasProperty("units"))
+          {
+            if (this->get<string>("units") == "COUNT")
+              m_key += ":INT";
+            else
+              m_key += ":DOUBLE";
+          }
+          else if (type != "TOOL_NUMBER" && (type.ends_with("COUNT") || type.ends_with("NUMBER")))
+          {
             m_key += ":INT";
-          else
-            m_key += ":DOUBLE";
+          }
         }
       }
     }
