@@ -1,0 +1,90 @@
+name: pr-review-trigger
+
+# Forwards PR events, merged PRs (kind pr_merged, for feature announcements) and TowelBoy-mentioning PR comments to the ENG-Coding webhook.
+# Needs secrets ENG_CODING_PR_WEBHOOK_URL and ENG_CODING_PR_WEBHOOK_KEY (sent as-is in the Authorization header, no Bearer prefix).
+# Forked PRs do not receive secrets, so they are skipped with a notice (CI never fails).
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize, closed]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  pull-requests: read   # only to look up a PR's head ref for issue_comment events
+
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    # Issue comments only count when they are on a PR.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
+    steps:
+      - name: Forward to ENG-Coding webhook
+        env:
+          URL: ${{ secrets.ENG_CODING_PR_WEBHOOK_URL }}
+          KEY: ${{ secrets.ENG_CODING_PR_WEBHOOK_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::notice::ENG_CODING_PR_WEBHOOK_URL / _KEY not available (not set, or forked PR); skipping."
+            exit 0
+          fi
+          E="$GITHUB_EVENT_PATH"
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$(jq -r '.action' "$E")" = "closed" ]; then
+            if [ "$(jq -r '.pull_request.merged' "$E")" != "true" ]; then echo "::notice::Closed without merge; skipping."; exit 0; fi
+            PAYLOAD=$(jq -c --arg repo "$REPO" '{kind: "pr_merged", repo: $repo, number: .pull_request.number, title: .pull_request.title,
+              author: .pull_request.user.login, merged_at: .pull_request.merged_at, merge_sha: .pull_request.merge_commit_sha,
+              html_url: .pull_request.html_url}' "$E")
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$(jq -r '.pull_request.draft' "$E")" = "true" ]; then echo "::notice::Draft PR; skipping."; exit 0; fi
+            if jq -e '(.pull_request.body // "") | contains("Opened by TowelBoy (Grok Bot)")' "$E" >/dev/null; then
+              echo "::notice::PR opened by TowelBoy; skipping."; exit 0
+            fi
+            PAYLOAD=$(jq -c --arg repo "$REPO" '{repo: $repo, number: .pull_request.number, title: .pull_request.title,
+              author: .pull_request.user.login, draft: .pull_request.draft, head_sha: .pull_request.head.sha,
+              html_url: .pull_request.html_url,
+              body_has_opened_by_towelboy: ((.pull_request.body // "") | contains("Opened by TowelBoy (Grok Bot)"))}' "$E")
+          else
+            # Comment / review events. Never forward Bot senders or DNX-TowelBoy itself.
+            case "$EVENT_NAME" in
+              issue_comment)
+                OBJ=.comment; NUM=.issue.number; PRURL=.issue.pull_request.html_url; PRAUTHOR=.issue.user.login ;;
+              pull_request_review_comment)
+                OBJ=.comment; NUM=.pull_request.number; PRURL=.pull_request.html_url; PRAUTHOR=.pull_request.user.login ;;
+              pull_request_review)
+                OBJ=.review; NUM=.pull_request.number; PRURL=.pull_request.html_url; PRAUTHOR=.pull_request.user.login ;;
+              *) echo "Unsupported event"; exit 0 ;;
+            esac
+            if jq -e "($OBJ.user.login // \"\") == \"DNX-TowelBoy\" or ($OBJ.user.type // \"\") == \"Bot\" or (.sender.type // \"\") == \"Bot\" or (.sender.login // \"\") == \"DNX-TowelBoy\"" "$E" >/dev/null; then
+              echo "::notice::Authored by TowelBoy or a bot; skipping."; exit 0
+            fi
+            # Head ref: in the payload for review events; fetched for issue_comment.
+            if [ "$EVENT_NAME" = "issue_comment" ]; then
+              PRAPI=$(jq -r '.issue.pull_request.url' "$E")
+              HEADREF=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$PRAPI" | jq -r '.head.ref // ""' || true)
+            else
+              HEADREF=$(jq -r '.pull_request.head.ref // ""' "$E")
+            fi
+            PRA=$(jq -r "$PRAUTHOR // \"\"" "$E")
+            if [ "$PRA" = "DNX-TowelBoy" ] && [ "${HEADREF#towelboy-}" != "$HEADREF" ]; then
+              echo "TowelBoy-owned PR (head $HEADREF): forwarding every event."
+            elif ! jq -e "($OBJ.body // \"\") | test(\"towelboy\"; \"i\")" "$E" >/dev/null; then
+              echo "::notice::No TowelBoy mention; skipping."; exit 0
+            fi
+            if [ "$EVENT_NAME" = "pull_request_review" ]; then
+              PAYLOAD=$(jq -c --arg repo "$REPO" "{kind: \"pr_review\", repo: \$repo, number: $NUM, review_id: .review.id,
+                review_url: .review.html_url, author: .review.user.login, state: .review.state,
+                body: (.review.body // \"\"), pr_html_url: $PRURL}" "$E")
+            else
+              PAYLOAD=$(jq -c --arg repo "$REPO" "{kind: \"pr_comment\", repo: \$repo, number: $NUM, comment_id: .comment.id,
+                comment_url: .comment.html_url, author: .comment.user.login, body: (.comment.body // \"\"),
+                path: (.comment.path // null), line: (.comment.line // .comment.original_line // null), pr_html_url: $PRURL}" "$E")
+            fi
+          fi
+          curl -fsS -X POST "$URL" -H "Authorization: $KEY" -H 'Content-Type: application/json' -d "$PAYLOAD"
