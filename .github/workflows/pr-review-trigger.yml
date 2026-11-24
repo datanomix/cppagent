@@ -1,7 +1,7 @@
 name: pr-review-trigger
 
 # Forwards PR events, merged PRs (kind pr_merged, for feature announcements) and TowelBoy-mentioning PR comments to the ENG-Coding webhook.
-# Needs secrets ENG_CODING_PR_WEBHOOK_URL and ENG_CODING_PR_WEBHOOK_KEY (sent as-is in the Authorization header, no Bearer prefix).
+# Needs secrets ENG_CODING_PR_WEBHOOK_URL and ENG_CODING_PR_WEBHOOK_KEY (sent as Authorization: Bearer <key>).
 # Forked PRs do not receive secrets, so they are skipped with a notice (CI never fails).
 
 on:
@@ -87,4 +87,4 @@ jobs:
                 path: (.comment.path // null), line: (.comment.line // .comment.original_line // null), pr_html_url: $PRURL}" "$E")
             fi
           fi
-          curl -fsS -X POST "$URL" -H "Authorization: $KEY" -H 'Content-Type: application/json' -d "$PAYLOAD"
+          curl -fsS -X POST "$URL" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$PAYLOAD"
